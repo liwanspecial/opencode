@@ -51,3 +51,23 @@ export default {
 }
 
 export const Basic = story.Basic
+
+export const Mermaid = () => (
+  <story.meta.component
+    text={`Here is a Mermaid diagram:
+
+\`\`\`mermaid
+flowchart TD
+  A[Start] --> B{Render Mermaid?}
+  B -->|Yes| C[Show diagram]
+  B -->|No| D[Show source]
+\`\`\`
+
+And a normal code block:
+
+\`\`\`ts
+const value = "not mermaid"
+\`\`\`
+`}
+  />
+)

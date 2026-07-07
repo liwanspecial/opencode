@@ -10,6 +10,7 @@ import {
   createResource,
   createSignal,
   createUniqueId,
+  Show,
   onCleanup,
   type Setter,
   splitProps,
@@ -31,6 +32,7 @@ import { markdownBlockKey, type MarkdownToken } from "./markdown-worker-protocol
 import { shouldResetCodeTokens, type RenderedCodeState } from "./markdown-code-state"
 import { getCachedMarkdown, sanitizeMarkdown, touchCachedMarkdown, type MarkdownCacheEntry } from "./markdown-cache"
 import { inlineCodeKind } from "./markdown-inline-code-kind"
+import { isMermaidBlock } from "./markdown-mermaid"
 
 type RenderedBlock =
   | (MarkdownCacheEntry & { key: string; mode: Exclude<Block["mode"], "code"> })
@@ -52,6 +54,8 @@ type RenderResult = {
 }
 
 const renderedCodeTokens = new WeakMap<HTMLDivElement, RenderedCodeState>()
+const mermaidBlockState = new WeakMap<HTMLElement, () => void>()
+let mermaidCounter = 0
 
 function escape(text: string) {
   return text
@@ -171,6 +175,119 @@ function disposeCopyButtons(root: Element) {
   hosts.forEach(disposeCopyButton)
 }
 
+function createMermaidBlock(source: string) {
+  const host = document.createElement("div")
+  host.setAttribute("data-slot", "markdown-mermaid-block")
+  mermaidBlockState.set(host, render(() => <MarkdownMermaidBlock source={source} />, host))
+  return host
+}
+
+function disposeMermaidBlock(host: HTMLElement) {
+  mermaidBlockState.get(host)?.()
+  mermaidBlockState.delete(host)
+}
+
+function disposeMermaidBlocks(root: Element) {
+  const hosts = [
+    ...(root instanceof HTMLElement && root.getAttribute("data-slot") === "markdown-mermaid-block" ? [root] : []),
+    ...Array.from(root.querySelectorAll('[data-slot="markdown-mermaid-block"]')).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement,
+    ),
+  ]
+  hosts.forEach(disposeMermaidBlock)
+}
+
+function disposeMarkdownEnhancements(root: Element) {
+  disposeCopyButtons(root)
+  disposeMermaidBlocks(root)
+}
+
+function MarkdownMermaidBlock(props: { source: string }) {
+  const [mode, setMode] = createSignal<"diagram" | "code">("diagram")
+  const scales = [0.5, 0.75, 1, 1.25, 1.5]
+  const [scaleIndex, setScaleIndex] = createSignal(1)
+  const scale = () => scales[scaleIndex()] ?? 0.75
+  const [svg, setSvg] = createSignal("")
+  const [error, setError] = createSignal<string>()
+
+  createEffect(() => {
+    const source = props.source
+    const id = `opencode-mermaid-${++mermaidCounter}`
+    setSvg("")
+    setError(undefined)
+    void (async () => {
+      try {
+        const mermaid = await import("mermaid")
+        mermaid.default.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" })
+        const rendered = await mermaid.default.render(id, source)
+        setSvg(rendered.svg)
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error))
+      }
+    })()
+  })
+
+  return (
+    <div data-component="markdown-mermaid" data-mode={mode()}>
+      <div data-slot="markdown-mermaid-toolbar">
+        <Show
+          when={mode() === "diagram"}
+          fallback={
+            <button type="button" data-slot="markdown-mermaid-button" onClick={() => setMode("diagram")}>
+              Diagram
+            </button>
+          }
+        >
+          <button
+            type="button"
+            data-slot="markdown-mermaid-button"
+            disabled={scaleIndex() === 0}
+            onClick={() => setScaleIndex((current) => Math.max(0, current - 1))}
+          >
+            -
+          </button>
+          <span data-slot="markdown-mermaid-scale">{Math.round(scale() * 100)}%</span>
+          <button
+            type="button"
+            data-slot="markdown-mermaid-button"
+            disabled={scaleIndex() === scales.length - 1}
+            onClick={() => setScaleIndex((current) => Math.min(scales.length - 1, current + 1))}
+          >
+            +
+          </button>
+          <button type="button" data-slot="markdown-mermaid-button" onClick={() => setMode("code")}>
+            Code
+          </button>
+        </Show>
+      </div>
+      <Show
+        when={mode() === "diagram"}
+        fallback={
+          <pre class="shiki OpenCode">
+            <code class="language-mermaid">{props.source}</code>
+          </pre>
+        }
+      >
+        <Show
+          when={!error()}
+          fallback={
+            <div data-slot="markdown-mermaid-error">
+              <div>Unable to render Mermaid diagram.</div>
+              <div>{error()}</div>
+            </div>
+          }
+        >
+          <div
+            data-slot="markdown-mermaid-diagram"
+            style={{ "--markdown-mermaid-scale": String(scale()) }}
+            innerHTML={svg()}
+          />
+        </Show>
+      </Show>
+    </div>
+  )
+}
+
 const shellLanguages = new Set(["bash", "sh", "shell", "zsh", "fish", "console", "terminal"])
 
 function codeKind(language: string | undefined) {
@@ -203,18 +320,28 @@ function applyCodeMetadata(wrapper: HTMLElement, language: string | undefined) {
 function ensureCodeWrapper(block: HTMLPreElement, labels: CopyLabels) {
   const parent = block.parentElement
   if (!parent) return
+  const language = codeLanguage(block)
+  const source = block.querySelector("code")?.textContent ?? ""
+  if (isMermaidBlock(language, source)) {
+    const wrapper = document.createElement("div")
+    wrapper.setAttribute("data-component", "markdown-code")
+    wrapper.dataset.language = "mermaid"
+    parent.replaceChild(wrapper, block)
+    wrapper.appendChild(createMermaidBlock(source))
+    return
+  }
   const wrapped = parent.getAttribute("data-component") === "markdown-code"
   if (!wrapped) {
     const wrapper = document.createElement("div")
     wrapper.setAttribute("data-component", "markdown-code")
-    applyCodeMetadata(wrapper, codeLanguage(block))
+    applyCodeMetadata(wrapper, language)
     parent.replaceChild(wrapper, block)
     wrapper.appendChild(block)
     wrapper.appendChild(createCopyButton(labels))
     return
   }
 
-  applyCodeMetadata(parent, codeLanguage(block))
+  applyCodeMetadata(parent, language)
 
   const buttons = Array.from(parent.querySelectorAll('[data-slot="markdown-copy-button"]')).filter(
     (el): el is HTMLButtonElement => el instanceof HTMLButtonElement,
@@ -321,7 +448,7 @@ function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
     for (const timeout of timeouts.values()) {
       clearTimeout(timeout)
     }
-    disposeCopyButtons(root)
+    disposeMarkdownEnhancements(root)
   }
 }
 
@@ -463,7 +590,7 @@ export function Markdown(
     if (!container) return
     if (isServer) return
     if (content.length === 0) {
-      disposeCopyButtons(container)
+      disposeMarkdownEnhancements(container)
       container.innerHTML = ""
       return
     }
@@ -482,7 +609,7 @@ export function Markdown(
     while (container.children.length > content.length) {
       const child = container.lastElementChild
       if (!child) break
-      disposeCopyButtons(child)
+      disposeMarkdownEnhancements(child)
       child.remove()
     }
     container
@@ -497,6 +624,8 @@ export function Markdown(
 
   onCleanup(() => {
     if (copyCleanup) copyCleanup()
+    const container = root()
+    if (container) disposeMermaidBlocks(container)
     activeCodeKeys.forEach(disposeCode)
     completedCode.clear()
   })
@@ -587,7 +716,7 @@ function updateBlock(container: HTMLDivElement, index: number, block: RenderedBl
       return true
     },
     onBeforeNodeDiscarded: (node) => {
-      if (node instanceof Element) disposeCopyButtons(node)
+      if (node instanceof Element) disposeMarkdownEnhancements(node)
       return true
     },
   })
@@ -606,6 +735,20 @@ function updateCodeBlock(
   next.dataset.markdownHash = block.hash
   next.dataset.markdownComplete = block.complete ? "true" : "false"
   next.style.display = "contents"
+
+  const source = block.stable.concat(block.unstable).map((token) => token[0]).join("")
+  if (isMermaidBlock(block.language, source)) {
+    if (existing?.dataset.markdownHash === block.hash && existing.querySelector('[data-slot="markdown-mermaid-block"]')) return
+    disposeMarkdownEnhancements(next)
+    next.replaceChildren(createMermaidBlock(source))
+    if (current && current !== next) {
+      disposeMarkdownEnhancements(current)
+      current.replaceWith(next)
+      return
+    }
+    if (!current) container.appendChild(next)
+    return
+  }
 
   const code = existing?.querySelector("code")
   if (code instanceof HTMLElement) {

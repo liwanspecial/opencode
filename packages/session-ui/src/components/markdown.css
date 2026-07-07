@@ -185,6 +185,93 @@
     position: relative;
   }
 
+  [data-component="markdown-mermaid"] {
+    position: relative;
+    margin-top: 12px;
+    margin-bottom: 24px;
+    border: 0.5px solid var(--v2-border-border-base);
+    border-radius: 6px;
+    background: var(--color-background-stronger);
+    overflow: hidden;
+  }
+
+  [data-slot="markdown-mermaid-toolbar"] {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  [data-slot="markdown-mermaid-button"] {
+    border: 0.5px solid var(--v2-border-border-muted);
+    border-radius: 4px;
+    background: var(--v2-background-bg-layer-02);
+    color: var(--v2-text-text-muted);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1;
+    padding: 5px 7px;
+    cursor: pointer;
+  }
+
+  [data-slot="markdown-mermaid-button"]:hover:not(:disabled) {
+    color: var(--v2-text-text-base);
+  }
+
+  [data-slot="markdown-mermaid-button"]:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  [data-slot="markdown-mermaid-scale"] {
+    min-width: 36px;
+    border: 0.5px solid var(--v2-border-border-muted);
+    border-radius: 4px;
+    background: var(--v2-background-bg-layer-02);
+    color: var(--v2-text-text-muted);
+    font-size: 12px;
+    line-height: 1;
+    padding: 5px 7px;
+    text-align: center;
+  }
+
+  [data-slot="markdown-mermaid-diagram"] {
+    min-height: 64px;
+    padding: 32px 12px 12px;
+    overflow-x: auto;
+    text-align: center;
+  }
+
+  [data-slot="markdown-mermaid-diagram"]:empty::before {
+    content: "Rendering diagram...";
+    color: var(--v2-text-text-muted);
+    font-size: 12px;
+  }
+
+  [data-slot="markdown-mermaid-diagram"] svg {
+    max-width: 100%;
+    height: auto;
+    transform: scale(var(--markdown-mermaid-scale, 0.75));
+    transform-origin: top center;
+    width: calc(100% / var(--markdown-mermaid-scale, 0.75));
+  }
+
+  [data-component="markdown-mermaid"] pre {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    padding-top: 32px;
+  }
+
+  [data-slot="markdown-mermaid-error"] {
+    padding: 32px 12px 12px;
+    color: var(--v2-text-text-muted);
+    font-size: 12px;
+  }
+
   [data-component="markdown-code"][data-code-kind="shell"] .shiki {
     background: var(--markdown-shell-code-background);
     border-color: var(--markdown-shell-code-border);
