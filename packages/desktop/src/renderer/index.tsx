@@ -25,6 +25,7 @@ import { initI18n, t } from "./i18n"
 import { initializationData, initializationReady } from "./initialization"
 import { DesktopFirstLaunchOnboarding } from "./onboarding"
 import { resetZoom, setPinchZoomEnabled, webviewZoom, zoomIn, zoomOut } from "./webview-zoom"
+import { windowFullscreen } from "./window-fullscreen"
 import { availableStartupServer, readyWslConnections } from "./wsl/connections"
 import "./styles.css"
 import { Splash } from "@opencode-ai/ui/logo"
@@ -239,6 +240,9 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       }
       return window.api.openPath(path, app)
     },
+    async revealPath(path: string) {
+      return window.api.revealPath(path)
+    },
 
     back() {
       window.history.back()
@@ -257,6 +261,8 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     },
 
     exportDebugLogs: () => window.api.exportDebugLogs(),
+
+    setForceFocus: (enabled) => window.api.setForceFocus(enabled),
 
     recordFatalRendererError: (error) => window.api.recordFatalRendererError(error),
 
@@ -309,6 +315,8 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     parseMarkdown: (markdown: string) => window.api.parseMarkdownCommand(markdown),
 
     webviewZoom,
+
+    windowFullscreen,
 
     getPinchZoomEnabled: () => window.api.getPinchZoomEnabled(),
 
@@ -400,7 +408,8 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
   function App() {
     const wslServers = useWslServers()
     const ready = createMemo(
-      () => !defaultServer.loading && !sidecar.loading && !windowCount.loading && !locale.loading,
+      () =>
+        !defaultServer.loading && !sidecar.loading && !windowCount.loading && !locale.loading && !wslServers.isLoading,
     )
     const servers = createMemo(() => {
       const data = initializationData(sidecar)

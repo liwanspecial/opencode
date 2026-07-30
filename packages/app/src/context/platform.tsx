@@ -38,6 +38,9 @@ type PlatformBase = {
   /** Open a local path in a local app (desktop only) */
   openPath?(path: string, app?: string): Promise<void>
 
+  /** Reveal a local path in the system file manager; false when the path does not exist (desktop only) */
+  revealPath?(path: string): Promise<boolean>
+
   /** Restart the app  */
   restart(): Promise<void>
 
@@ -101,6 +104,9 @@ type PlatformBase = {
   /** Webview zoom level (desktop only) */
   webviewZoom?: Accessor<number>
 
+  /** Whether the native desktop window is fullscreen */
+  windowFullscreen?: Accessor<boolean>
+
   /** Get whether native pinch/Ctrl-scroll zoom gestures are enabled (desktop only) */
   getPinchZoomEnabled?(): Promise<boolean> | boolean
 
@@ -118,6 +124,9 @@ type PlatformBase = {
 
   /** Export collected diagnostic logs (desktop only) */
   exportDebugLogs?(): Promise<string>
+
+  /** Force focus styles on interactive elements through desktop devtools (desktop only) */
+  setForceFocus?(enabled: boolean): Promise<void>
 
   /** Record a fatal renderer error in platform logs (desktop only) */
   recordFatalRendererError?(error: FatalRendererErrorLog): Promise<void>
