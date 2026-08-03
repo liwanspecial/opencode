@@ -4,12 +4,12 @@ import {
   ACCEPTED_FILE_EXTENSIONS,
   AppBaseProviders,
   AppInterface,
-  handleNotificationClick,
   loadLocaleDict,
   normalizeLocale,
   type Locale,
   type Platform,
   PlatformProvider,
+  createDraftStore,
   ServerConnection,
   useCommand,
   useWslServers,
@@ -18,11 +18,11 @@ import type { UpdaterState } from "@opencode-ai/app/updater"
 import * as Sentry from "@sentry/solid"
 import type { AsyncStorage } from "@solid-primitives/storage"
 import { createMemoryHistory, MemoryRouter, type BaseRouterProps } from "@solidjs/router"
-import { createEffect, createMemo, createResource, createSignal, onCleanup, onMount, Show } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
 import { render } from "solid-js/web"
 import pkg from "../../package.json"
 import { initI18n, t } from "./i18n"
-import { initializationData, initializationReady } from "./initialization"
+import { initializationData } from "./initialization"
 import { DesktopFirstLaunchOnboarding } from "./onboarding"
 import { resetZoom, setPinchZoomEnabled, webviewZoom, zoomIn, zoomOut } from "./webview-zoom"
 import { windowFullscreen } from "./window-fullscreen"
@@ -230,8 +230,11 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       })
     },
 
-    openLink(url: string) {
-      window.api.openLink(url)
+    openExternal(url: string) {
+      window.api.openExternal(url)
+    },
+    openLocalFile(url: string) {
+      window.api.openLocalFile(url)
     },
     async openPath(path: string, app?: string) {
       if (os === "windows") {
@@ -244,15 +247,14 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       return window.api.revealPath(path)
     },
 
-    back() {
-      window.history.back()
-    },
-
-    forward() {
-      window.history.forward()
-    },
-
     storage,
+    draftStore: createDraftStore({
+      get: window.api.draftGet,
+      set: window.api.draftSet,
+      remove: window.api.draftDelete,
+      putBlob: (blob) => blob.arrayBuffer().then(window.api.draftBlobPut),
+      getBlob: (id) => window.api.draftBlobGet(id).then((data) => data && new Blob([data])),
+    }),
 
     updater: {
       state: updaterState,
@@ -271,7 +273,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       window.api.relaunch()
     },
 
-    notify: async (title, description, href) => {
+    notify: async (title, description, onClick) => {
       const focused = await window.api.getWindowFocused().catch(() => document.hasFocus())
       if (focused) return
 
@@ -282,7 +284,7 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
       notification.onclick = () => {
         void window.api.showWindow()
         void window.api.setWindowFocus()
-        handleNotificationClick(href)
+        onClick?.()
         notification.close()
       }
     },
@@ -311,8 +313,6 @@ const createPlatform = (windowState: DesktopWindowState): Platform => {
     setDisplayBackend: async (backend) => {
       await window.api.setDisplayBackend(backend)
     },
-
-    parseMarkdown: (markdown: string) => window.api.parseMarkdownCommand(markdown),
 
     webviewZoom,
 
@@ -367,8 +367,6 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
     return next satisfies Locale
   }
 
-  const [windowCount] = createResource(() => window.api.getWindowCount())
-
   // Fetch sidecar credentials (available immediately, before health check)
   const [sidecar] = createResource(() => window.api.awaitInitialization())
 
@@ -378,14 +376,6 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
     <DesktopMemoryRouter {...props} windowID={platform.windowID ?? "browser"} />
   )
   const onboarding = Promise.withResolvers<void>()
-
-  function handleClick(e: MouseEvent) {
-    const link = (e.target as HTMLElement).closest("a.external-link") as HTMLAnchorElement | null
-    if (link?.href) {
-      e.preventDefault()
-      platform.openLink(link.href)
-    }
-  }
 
   function Inner() {
     const cmd = useCommand()
@@ -408,8 +398,7 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
   function App() {
     const wslServers = useWslServers()
     const ready = createMemo(
-      () =>
-        !defaultServer.loading && !sidecar.loading && !windowCount.loading && !locale.loading && !wslServers.isLoading,
+      () => !defaultServer.loading && !sidecar.loading && !locale.loading && !wslServers.isLoading,
     )
     const servers = createMemo(() => {
       const data = initializationData(sidecar)
@@ -455,13 +444,6 @@ function DesktopRoot(props: { windowState: DesktopWindowState }) {
       </Show>
     )
   }
-
-  onMount(() => {
-    document.addEventListener("click", handleClick)
-    onCleanup(() => {
-      document.removeEventListener("click", handleClick)
-    })
-  })
 
   return (
     <PlatformProvider value={platform}>
