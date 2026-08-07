@@ -18,12 +18,19 @@ const providerID = ProviderV2.ID.make("test")
 const retryProvider = "test"
 const it = testEffect(LayerNode.compile(LayerNode.group([SessionStatus.node, CrossSpawnSpawner.node])))
 
-function apiError(headers?: Record<string, string>): SessionV1.APIError {
+function apiError(
+  headers?: Record<string, string>,
+  statusCode?: number,
+  message = "boom",
+  responseBody?: string,
+): SessionV1.APIError {
   return Schema.decodeUnknownSync(SessionV1.APIError.Schema)(
     new SessionV1.APIError({
-      message: "boom",
+      message,
       isRetryable: true,
+      statusCode,
       responseHeaders: headers,
+      responseBody,
     }).toObject(),
   )
 }
@@ -33,11 +40,53 @@ function wrap(message: unknown): ReturnType<NamedError["toObject"]> {
 }
 
 describe("session.retry.delay", () => {
-  test("caps delay at 30 seconds when headers missing", () => {
+  test("caps delay at 10 seconds for network errors", () => {
     const error = apiError()
     const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error))
-    expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
+    expect(delays).toStrictEqual([2000, 4000, 8000, 10000, 10000, 10000, 10000, 10000, 10000, 10000])
   })
+
+  test("caps retry-after at 10 seconds for 5xx errors", () => {
+    const error = apiError({ "retry-after": "120" }, 503)
+    expect(SessionRetry.delay(1, error)).toBe(10000)
+  })
+
+  test("caps retry-after at 10 seconds for 5xx errors with rate-limit text", () => {
+    const error = apiError({ "retry-after": "120" }, 503, "Rate limit exceeded")
+    expect(SessionRetry.delay(1, error)).toBe(10000)
+  })
+
+  test("preserves retry-after for rate limits", () => {
+    const error = apiError({ "retry-after": "120" }, 429)
+    expect(SessionRetry.delay(1, error)).toBe(120000)
+  })
+
+  test("preserves retry-after for statusless rate limits", () => {
+    const error = apiError({ "retry-after": "120" }, undefined, "Rate limit exceeded")
+    expect(SessionRetry.delay(1, error)).toBe(120000)
+  })
+
+  test("preserves retry-after for statusless rate-limit response bodies", () => {
+    const error = apiError(
+      { "retry-after": "120" },
+      undefined,
+      "<none>",
+      '{"error":{"code":"rate_limit_exceeded"}}',
+    )
+    expect(SessionRetry.delay(1, error)).toBe(120000)
+  })
+
+  for (const code of ["GoUsageLimitError", "FreeUsageLimitError"]) {
+    test(`preserves retry-after for statusless ${code} responses`, () => {
+      const error = apiError(
+        { "retry-after": "120" },
+        undefined,
+        "Usage limit reached",
+        JSON.stringify({ error: { type: code } }),
+      )
+      expect(SessionRetry.delay(1, error)).toBe(120000)
+    })
+  }
 
   test("prefers retry-after-ms when shorter than exponential", () => {
     const error = apiError({ "retry-after-ms": "1500" })
@@ -45,13 +94,13 @@ describe("session.retry.delay", () => {
   })
 
   test("uses retry-after seconds when reasonable", () => {
-    const error = apiError({ "retry-after": "30" })
+    const error = apiError({ "retry-after": "30" }, 429)
     expect(SessionRetry.delay(3, error)).toBe(30000)
   })
 
   test("accepts http-date retry-after values", () => {
     const date = new Date(Date.now() + 20000).toUTCString()
-    const error = apiError({ "retry-after": date })
+    const error = apiError({ "retry-after": date }, 429)
     const d = SessionRetry.delay(1, error)
     expect(d).toBeGreaterThanOrEqual(19000)
     expect(d).toBeLessThanOrEqual(20000)
@@ -74,15 +123,15 @@ describe("session.retry.delay", () => {
   })
 
   test("uses retry-after values even when exceeding 10 minutes with headers", () => {
-    const error = apiError({ "retry-after": "50" })
+    const error = apiError({ "retry-after": "50" }, 429)
     expect(SessionRetry.delay(1, error)).toBe(50000)
 
-    const longError = apiError({ "retry-after-ms": "700000" })
+    const longError = apiError({ "retry-after-ms": "700000" }, 429)
     expect(SessionRetry.delay(1, longError)).toBe(700000)
   })
 
   test("caps oversized header delays to the runtime timer limit", () => {
-    const error = apiError({ "retry-after-ms": "999999999999" })
+    const error = apiError({ "retry-after-ms": "999999999999" }, 429)
     expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
   })
 

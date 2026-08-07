@@ -26,10 +26,26 @@ export type Retryable = {
 export const RETRY_INITIAL_DELAY = 2000
 export const RETRY_BACKOFF_FACTOR = 2
 export const RETRY_MAX_DELAY_NO_HEADERS = 30_000 // 30 seconds
+export const RETRY_MAX_TRANSIENT_DELAY = 10_000 // 10 seconds
 export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
 
-function cap(ms: number) {
-  return Math.min(ms, RETRY_MAX_DELAY)
+function cap(ms: number, error?: SessionV1.APIError) {
+  const delay = Math.min(ms, RETRY_MAX_DELAY)
+  const status = error?.data.statusCode
+  const details = `${error?.data.message ?? ""} ${error?.data.responseBody ?? ""}`.toLowerCase()
+  const rateLimited =
+    status === 429 ||
+    (status === undefined &&
+      (details.includes("rate limit") ||
+        details.includes("rate_limit") ||
+        details.includes("too many requests") ||
+        details.includes("too_many_requests") ||
+        details.includes("rate increased too quickly") ||
+        details.includes("gousagelimiterror") ||
+        details.includes("freeusagelimiterror")))
+  const transient =
+    error !== undefined && !rateLimited && (status === undefined || (status >= 500 && status < 600))
+  return transient ? Math.min(delay, RETRY_MAX_TRANSIENT_DELAY) : delay
 }
 
 export function delay(attempt: number, error?: SessionV1.APIError) {
@@ -40,7 +56,7 @@ export function delay(attempt: number, error?: SessionV1.APIError) {
       if (retryAfterMs) {
         const parsedMs = Number.parseFloat(retryAfterMs)
         if (!Number.isNaN(parsedMs)) {
-          return cap(parsedMs)
+          return cap(parsedMs, error)
         }
       }
 
@@ -49,20 +65,23 @@ export function delay(attempt: number, error?: SessionV1.APIError) {
         const parsedSeconds = Number.parseFloat(retryAfter)
         if (!Number.isNaN(parsedSeconds)) {
           // convert seconds to milliseconds
-          return cap(Math.ceil(parsedSeconds * 1000))
+          return cap(Math.ceil(parsedSeconds * 1000), error)
         }
         // Try parsing as HTTP date format
         const parsed = Date.parse(retryAfter) - Date.now()
         if (!Number.isNaN(parsed) && parsed > 0) {
-          return cap(Math.ceil(parsed))
+          return cap(Math.ceil(parsed), error)
         }
       }
 
-      return cap(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1))
+      return cap(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), error)
     }
   }
 
-  return cap(Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), RETRY_MAX_DELAY_NO_HEADERS))
+  return cap(
+    Math.min(RETRY_INITIAL_DELAY * Math.pow(RETRY_BACKOFF_FACTOR, attempt - 1), RETRY_MAX_DELAY_NO_HEADERS),
+    error,
+  )
 }
 
 export function retryable(error: Err, provider: string) {
