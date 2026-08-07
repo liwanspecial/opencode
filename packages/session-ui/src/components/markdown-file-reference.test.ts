@@ -10,7 +10,11 @@ describe("parseMarkdownFileReference", () => {
     ["/repo/src/app.tsx#L27", "link", { path: "/repo/src/app.tsx", line: 27 }],
     ["file:///C:/repo/src/app.tsx", "link", { path: "C:/repo/src/app.tsx" }],
     ["docs/My File.md", "inline", { path: "docs/My File.md" }],
+    ["docs/My File.md", "link", { path: "docs/My File.md" }],
+    ["docs/My%20File.md", "link", { path: "docs/My File.md" }],
     ["file:///repo/My%20File.ts%23L4#L8", "link", { path: "/repo/My File.ts#L4", line: 8 }],
+    ["file:///tmp/opencode/app.ts", "link", { path: "/tmp/opencode/app.ts" }],
+    ["file://server/share/app.ts", "link", { path: "\\\\server\\share\\app.ts" }],
     ["../packages/session-ui", "inline", { path: "../packages/session-ui" }],
     ["\\\\server\\share\\app.ts", "link", { path: "\\\\server\\share\\app.ts" }],
   ] as const)("parses %s", (value, source, expected) => {
@@ -28,6 +32,12 @@ describe("parseMarkdownFileReference", () => {
     "app.tsx:0",
     "app.tsx#L0",
     "@scope/name",
+    "javascript%3Aalert.ts",
+    "file://",
+    "file:///",
+    "file://server/",
+    "file://javascript%3Aalert(1)",
+    "file://[bad]/app.ts",
     "file:///repo/bad%ZZ.ts",
   ])("rejects %s", (value) => {
     expect(parseMarkdownFileReference(value, "link")).toBeUndefined()

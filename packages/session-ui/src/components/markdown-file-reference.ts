@@ -17,10 +17,10 @@ export function parseMarkdownFileReference(
   const lineText = hash?.[1] ?? colon?.[1]
   const withoutLine = lineText ? raw.slice(0, -(hash?.[0].length ?? colon![0].length)) : raw
   const fileURL = /^file:\/\//i.test(withoutLine)
-  const decoded = decode(fileURL ? withoutLine.slice("file://".length) : withoutLine)
-  if (decoded === undefined) return undefined
-  const path = fileURL && /^\/[a-z]:[\\/]/i.test(decoded) ? decoded.slice(1) : decoded
-  if (!looksLikePath(path, source, fileURL)) return undefined
+  const path = fileURL ? parseFileURL(withoutLine) : decode(withoutLine)
+  if (path === undefined) return undefined
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) return undefined
+  if (!looksLikePath(path, source)) return undefined
 
   const line = lineText ? Number(lineText) : undefined
   if (line !== undefined && (!Number.isSafeInteger(line) || line < 1)) return undefined
@@ -35,13 +35,28 @@ function decode(value: string): string | undefined {
   }
 }
 
-function looksLikePath(path: string, source: "link" | "inline", fileURL: boolean) {
+function parseFileURL(value: string): string | undefined {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "file:" || url.username || url.password || url.port || url.search || url.hash) return undefined
+    const path = decode(url.pathname)
+    if (!path || path === "/") return undefined
+    if (url.hostname) return `\\\\${url.hostname}${path.replaceAll("/", "\\")}`
+    if (/^\/[a-z]:[\\/]/i.test(path)) return path.slice(1)
+    if (path.startsWith("/")) return path
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+function looksLikePath(path: string, source: "link" | "inline") {
   if (/^@[^/\\\s]+[/\\][^/\\\s]+$/.test(path)) return false
-  if (fileURL) return true
   if (/^[a-z]:[\\/]/i.test(path)) return true
   if (/^\\\\[^\\]/.test(path)) return true
   if (path.startsWith("/")) return true
   if (/^\.\.?[\\/]/.test(path)) return true
+  if (source === "link" && /\s/.test(path)) return /[/\\]/.test(path)
   if (source === "inline" && /\s/.test(path)) return /[/\\]/.test(path)
   if (/\s/.test(path)) return false
   return inlineCodeKind(path) === "path"

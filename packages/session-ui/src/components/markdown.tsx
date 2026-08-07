@@ -63,6 +63,7 @@ type RenderResult = {
 
 const renderedCodeTokens = new WeakMap<HTMLDivElement, RenderedCodeState>()
 const mermaidBlockState = new WeakMap<HTMLElement, () => void>()
+const markdownFileReferences = new WeakMap<HTMLElement, MarkdownFileReference>()
 let mermaidCounter = 0
 
 function escape(text: string) {
@@ -413,6 +414,9 @@ function markInlineCode(root: HTMLDivElement) {
 export function decorateMarkdownFileReferences(root: HTMLDivElement, onFileOpen: MarkdownFileOpenHandler | undefined) {
   if (!onFileOpen) return
 
+  root
+    .querySelectorAll<HTMLElement>("[data-file-path]")
+    .forEach((target) => markdownFileReferences.delete(target))
   root.querySelectorAll<HTMLAnchorElement>("a[data-markdown-href]").forEach((anchor) => {
     const reference = parseMarkdownFileReference(anchor.dataset.markdownHref ?? "", "link")
     if (!reference) return
@@ -432,6 +436,7 @@ export function decorateMarkdownFileReferences(root: HTMLDivElement, onFileOpen:
 }
 
 function markFileReference(target: HTMLElement, reference: MarkdownFileReference) {
+  markdownFileReferences.set(target, reference)
   target.dataset.filePath = reference.path
   if (reference.line !== undefined) target.dataset.fileLine = String(reference.line)
   else delete target.dataset.fileLine
@@ -456,12 +461,11 @@ export function setupMarkdownFileClicks(
     if (!(event.target instanceof Element)) return
     const target = event.target.closest<HTMLElement>("[data-file-path]")
     if (!target) return
+    const reference = markdownFileReferences.get(target)
+    if (!reference) return
     event.preventDefault()
     event.stopPropagation()
-    const path = target.dataset.filePath
-    if (!path) return
-    const line = target.dataset.fileLine ? Number(target.dataset.fileLine) : undefined
-    getOnFileOpen()?.(line === undefined ? { path } : { path, line })
+    getOnFileOpen()?.(reference)
   }
 
   root.addEventListener("click", handleClick)
@@ -825,6 +829,7 @@ function updateBlock(
       return true
     },
   })
+  decorateMarkdownFileReferences(current, onFileOpen)
 }
 
 function updateCodeBlock(

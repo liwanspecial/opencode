@@ -4,6 +4,7 @@ import type { MarkdownFileReference } from "@opencode-ai/session-ui/markdown"
 mock.module("../../../../session-ui/src/components/markdown.worker.ts?worker&url", () => ({ default: "" }))
 
 const { decorateMarkdownFileReferences, setupMarkdownFileClicks } = await import("@opencode-ai/session-ui/markdown")
+const { sanitizeMarkdown } = await import("@opencode-ai/session-ui/markdown-cache")
 
 afterAll(() => mock.restore())
 
@@ -75,5 +76,48 @@ describe("assistant Markdown file references", () => {
     expect(root.querySelector("[data-file-path]")).toBeNull()
     expect(root.querySelectorAll("a.external-link")).toHaveLength(3)
     expect(root.querySelector('a[href="https://opencode.ai"] > code')).not.toBeNull()
+  })
+
+  test("ignores forged file metadata preserved by sanitization", () => {
+    const root = document.createElement("div")
+    root.innerHTML = sanitizeMarkdown(
+      [
+        '<a href="https://opencode.ai/one" data-markdown-href="https://opencode.ai/one" data-file-path="C:/secret.ts" data-file-line="not-a-line" class="external-link">one</a>',
+        '<a href="https://opencode.ai/two" data-markdown-href="https://opencode.ai/two" data-file-path="/etc/passwd" data-file-line="-4" class="external-link">two</a>',
+      ].join(""),
+    )
+    const opened: MarkdownFileReference[] = []
+    decorateMarkdownFileReferences(root, (reference) => opened.push(reference))
+    const cleanup = setupMarkdownFileClicks(root, () => (reference) => opened.push(reference))
+    const forged = Array.from(root.querySelectorAll<HTMLAnchorElement>("a"))
+
+    expect(forged.map((anchor) => anchor.dataset.fileLine)).toEqual(["not-a-line", "-4"])
+    forged.forEach((anchor) => anchor.click())
+
+    expect(opened).toEqual([])
+    expect(forged.every((anchor) => anchor.classList.contains("external-link"))).toBe(true)
+    expect(forged.map((anchor) => anchor.href)).toEqual(["https://opencode.ai/one", "https://opencode.ai/two"])
+    cleanup()
+  })
+
+  test("revokes runtime trust when a file element becomes external", () => {
+    const root = document.createElement("div")
+    root.innerHTML = '<a href="#" data-markdown-href="src/app.ts" class="external-link">file</a>'
+    const opened: MarkdownFileReference[] = []
+    const handler = (reference: MarkdownFileReference) => opened.push(reference)
+    decorateMarkdownFileReferences(root, handler)
+    const cleanup = setupMarkdownFileClicks(root, () => handler)
+    const link = root.querySelector<HTMLAnchorElement>("a")!
+
+    link.href = "https://opencode.ai"
+    link.dataset.markdownHref = "https://opencode.ai"
+    link.dataset.filePath = "C:/forged.ts"
+    link.dataset.fileLine = "invalid"
+    link.className = "external-link"
+    decorateMarkdownFileReferences(root, handler)
+    link.click()
+
+    expect(opened).toEqual([])
+    cleanup()
   })
 })
