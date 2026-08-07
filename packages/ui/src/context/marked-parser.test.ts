@@ -5,8 +5,19 @@ const parser = createMarkdownParser((code, language) => `<pre data-language="${l
 
 test("renders links with application attributes", async () => {
   expect(await parser.parse("[OpenCode](https://opencode.ai)")).toBe(
-    '<p><a href="https://opencode.ai" class="external-link" target="_blank" rel="noopener noreferrer">OpenCode</a></p>\n',
+    '<p><a href="https://opencode.ai" data-markdown-href="https://opencode.ai" class="external-link" target="_blank" rel="noopener noreferrer">OpenCode</a></p>\n',
   )
+})
+
+test("preserves local link targets as inert metadata", async () => {
+  const html = await parser.parse("[file](<C:/Users/l/My Project/应用.tsx:12>)")
+  expect(html).toContain('data-markdown-href="C:/Users/l/My Project/应用.tsx:12"')
+})
+
+test("escapes link attributes", async () => {
+  const html = await parser.parse('[file](<src/a&quot; onclick=&quot;alert(1).ts>)')
+  expect(html).not.toContain(' onclick="')
+  expect(html).toContain("&amp;quot;")
 })
 
 test("renders inline and block math", async () => {
