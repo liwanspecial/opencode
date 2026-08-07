@@ -29,63 +29,56 @@ export function createFileLineRevealController(input: {
   requestFrame: (callback: () => void) => number
   cancelFrame: (id: number) => void
 }) {
-  let version = 0
-  let registration = 0
-  let firstFrame: number | undefined
-  let secondFrame: number | undefined
-  let pending: { version: number; path: string; line: number } | undefined
-  const revealers = new Map<string, { id: number; reveal: LineRevealer }>()
+  let frame: number | undefined
+  let intent: { path: string; line: number } | undefined
+  const revealers = new Map<string, { reveal: LineRevealer }>()
 
-  const cancelFrames = () => {
-    if (firstFrame !== undefined) input.cancelFrame(firstFrame)
-    if (secondFrame !== undefined) input.cancelFrame(secondFrame)
-    firstFrame = undefined
-    secondFrame = undefined
+  const cancelFrame = () => {
+    if (frame !== undefined) input.cancelFrame(frame)
+    frame = undefined
   }
 
   const cancel = () => {
-    version++
-    pending = undefined
-    cancelFrames()
+    intent = undefined
+    cancelFrame()
+  }
+
+  const deactivate = (path: string) => {
+    if (intent?.path !== path) return
+    cancel()
   }
 
   const schedule = () => {
-    if (!pending) return
-    if (firstFrame !== undefined || secondFrame !== undefined) return
-    const expected = pending.version
-    firstFrame = input.requestFrame(() => {
-      firstFrame = undefined
-      if (pending?.version !== expected) return
-      secondFrame = input.requestFrame(() => {
-        secondFrame = undefined
-        const request = pending
-        if (!request || request.version !== expected) return
-        if (!revealers.get(request.path)?.reveal(request.line)) return
-        if (pending?.version === expected) pending = undefined
-      })
+    if (!intent || frame !== undefined) return
+    const expected = intent
+    frame = input.requestFrame(() => {
+      frame = undefined
+      if (intent !== expected) return
+      revealers.get(expected.path)?.reveal(expected.line)
     })
   }
 
   return {
     request(path: string, line: number) {
-      cancelFrames()
-      pending = { version: ++version, path, line }
+      cancelFrame()
+      intent = { path, line }
       schedule()
     },
     cancel,
+    deactivate,
     register(path: string, reveal: LineRevealer) {
-      const id = ++registration
-      revealers.set(path, { id, reveal })
-      if (pending?.path === path) schedule()
+      const registration = { reveal }
+      revealers.set(path, registration)
+      if (intent?.path === path) schedule()
       return () => {
-        if (revealers.get(path)?.id !== id) return
+        if (revealers.get(path) !== registration) return
         revealers.delete(path)
-        if (pending?.path === path) cancel()
+        deactivate(path)
       }
     },
-    rendered(path: string) {
-      if (pending?.path !== path) return
-      cancelFrames()
+    restoreQueued(path: string) {
+      if (intent?.path !== path) return
+      cancelFrame()
       schedule()
     },
     dispose() {

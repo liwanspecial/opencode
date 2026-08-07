@@ -271,9 +271,24 @@ function SessionFileViewV1(props: { tab: string }) {
     view,
     onRestoreQueued: () => {
       const p = path()
-      if (p) file.lineRevealRendered(p)
+      if (p) file.lineRevealRestoreQueued(p)
     },
   })
+  const deactivateLineReveal = () => {
+    const p = path()
+    if (p) file.deactivateLineReveal(p)
+  }
+
+  createEffect(
+    on(
+      activeFileTab,
+      (active, previous) => {
+        if (previous !== props.tab || active === props.tab) return
+        deactivateLineReveal()
+      },
+      { defer: true },
+    ),
+  )
 
   const selectionPreview = (source: string, selection: FileSelection) => {
     return previewSelectedLines(source, {
@@ -503,7 +518,13 @@ function SessionFileViewV1(props: { tab: string }) {
 
   const content = () => (
     <div class="mt-3 relative h-full min-h-0">
-      <ScrollView class="h-full" viewportRef={scrollSync.setViewport} onScroll={scrollSync.handleScroll as any}>
+      <ScrollView
+        class="h-full"
+        viewportRef={scrollSync.setViewport}
+        onScroll={scrollSync.handleScroll as any}
+        onWheel={deactivateLineReveal}
+        onTouchMove={deactivateLineReveal}
+      >
         <Switch>
           <Match when={state()?.loaded}>{renderFile(contents())}</Match>
           <Match when={state()?.loading}>
@@ -563,9 +584,24 @@ function SessionFileViewV2(props: { tab: string }) {
     view,
     onRestoreQueued: () => {
       const p = path()
-      if (p) file.lineRevealRendered(p)
+      if (p) file.lineRevealRestoreQueued(p)
     },
   })
+  const deactivateLineReveal = () => {
+    const p = path()
+    if (p) file.deactivateLineReveal(p)
+  }
+
+  createEffect(
+    on(
+      activeFileTab,
+      (active, previous) => {
+        if (previous !== props.tab || active === props.tab) return
+        deactivateLineReveal()
+      },
+      { defer: true },
+    ),
+  )
 
   const selectionPreview = (source: string, selection: FileSelection) => {
     return previewSelectedLines(source, {
@@ -801,7 +837,13 @@ function SessionFileViewV2(props: { tab: string }) {
 
   const content = () => (
     <div class="mt-3 relative h-full min-h-0">
-      <ScrollView class="h-full" viewportRef={scrollSync.setViewport} onScroll={scrollSync.handleScroll as any}>
+      <ScrollView
+        class="h-full"
+        viewportRef={scrollSync.setViewport}
+        onScroll={scrollSync.handleScroll as any}
+        onWheel={deactivateLineReveal}
+        onTouchMove={deactivateLineReveal}
+      >
         <Switch>
           <Match when={state()?.loaded}>{renderFile(contents())}</Match>
           <Match when={state()?.loading}>

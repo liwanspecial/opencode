@@ -270,7 +270,8 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const revealLine = (input: string, line: number) => withPath(input, (file) => lineReveal.request(file, line))
     const registerLineRevealer = (input: string, reveal: (line: number) => boolean) =>
       lineReveal.register(path.normalize(input), reveal)
-    const lineRevealRendered = (input: string) => withPath(input, (file) => lineReveal.rendered(file))
+    const deactivateLineReveal = (input: string) => withPath(input, (file) => lineReveal.deactivate(file))
+    const lineRevealRestoreQueued = (input: string) => withPath(input, (file) => lineReveal.restoreQueued(file))
 
     onCleanup(() => {
       stop()
@@ -308,7 +309,8 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       setSelectedLines,
       revealLine,
       registerLineRevealer,
-      lineRevealRendered,
+      deactivateLineReveal,
+      lineRevealRestoreQueued,
       cancelLineReveal: lineReveal.cancel,
       searchFiles: (query: string, options?: { limit?: number; signal?: AbortSignal }) =>
         search(query, "false", options),
