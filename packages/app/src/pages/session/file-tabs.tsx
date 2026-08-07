@@ -241,6 +241,8 @@ function SessionFileViewV1(props: { tab: string }) {
   const search = {
     register: (handle: FileSearchHandle | null) => {
       find = handle
+      const p = path()
+      if (p) file.registerLineRevealer(p, handle?.revealLine)
     },
   }
 
@@ -462,6 +464,8 @@ function SessionFileViewV1(props: { tab: string }) {
         commentedLines={commentedLines()}
         onRendered={() => {
           scrollSync.queueRestore()
+          const p = path()
+          if (p) requestAnimationFrame(() => file.flushLineReveal(p))
         }}
         annotations={commentsUi.annotations()}
         renderAnnotation={commentsUi.renderAnnotation}
@@ -526,6 +530,8 @@ function SessionFileViewV2(props: { tab: string }) {
   const search = {
     register: (handle: FileSearchHandle | null) => {
       find = handle
+      const p = path()
+      if (p) file.registerLineRevealer(p, handle?.revealLine)
     },
   }
 
@@ -745,6 +751,8 @@ function SessionFileViewV2(props: { tab: string }) {
         commentedLines={commentedLines()}
         onRendered={() => {
           scrollSync.queueRestore()
+          const p = path()
+          if (p) requestAnimationFrame(() => file.flushLineReveal(p))
         }}
         annotations={commentsUi.annotations()}
         renderAnnotation={commentsUi.renderAnnotation}

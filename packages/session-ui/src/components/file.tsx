@@ -69,6 +69,7 @@ type SharedProps<T> = {
 
 export type FileSearchHandle = {
   focus: () => void
+  revealLine?: (line: number) => boolean
 }
 
 export type FileSearchControl = {
@@ -434,6 +435,7 @@ function useModeViewer(config: ModeConfig, adapter: ModeAdapter) {
 function useSearchHandle(opts: {
   search: () => FileSearchControl | undefined
   find: ReturnType<typeof createFileFind>
+  revealLine?: (line: number) => boolean
 }) {
   createEffect(() => {
     const search = opts.search()
@@ -441,6 +443,7 @@ function useSearchHandle(opts: {
 
     const handle = {
       focus: () => opts.find.focus(),
+      revealLine: opts.revealLine,
     } satisfies FileSearchHandle
 
     search.register(handle)
@@ -897,9 +900,32 @@ function TextViewer<T>(props: TextFileProps<T>) {
     })
   }
 
+  const revealLine = (line: number) => {
+    const target = viewer.getRoot()?.querySelector(`[data-line="${line}"]`)
+    if (target instanceof HTMLElement) {
+      target.scrollIntoView({ block: "center", inline: "nearest" })
+      return true
+    }
+
+    if (!(instance instanceof VirtualizedFile)) return false
+    const position = instance.getLinePosition(line)
+    const root = scrollParent(viewer.wrapper)
+    if (!position || !root) return false
+
+    const top =
+      root.scrollTop +
+      viewer.wrapper.getBoundingClientRect().top -
+      root.getBoundingClientRect().top +
+      position.top -
+      (root.clientHeight - position.height) / 2
+    root.scrollTo({ top: Math.max(0, top), behavior: "instant" })
+    return true
+  }
+
   useSearchHandle({
     search: () => local.search,
     find: viewer.find,
+    revealLine,
   })
 
   // -- render instance --

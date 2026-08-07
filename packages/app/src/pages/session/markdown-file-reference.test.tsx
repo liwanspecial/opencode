@@ -3,12 +3,48 @@ import type { MarkdownFileReference } from "@opencode-ai/session-ui/markdown"
 
 mock.module("../../../../session-ui/src/components/markdown.worker.ts?worker&url", () => ({ default: "" }))
 
-const { decorateMarkdownFileReferences, setupMarkdownFileClicks } = await import("@opencode-ai/session-ui/markdown")
+const { decorateMarkdown, decorateMarkdownFileReferences, setupMarkdownFileClicks } = await import(
+  "@opencode-ai/session-ui/markdown"
+)
 const { sanitizeMarkdown } = await import("@opencode-ai/session-ui/markdown-cache")
 
 afterAll(() => mock.restore())
 
 describe("assistant Markdown file references", () => {
+  test("decorates initial and replaced blocks in legacy and new layouts", () => {
+    for (const newLayout of [false, true]) {
+      document.body.toggleAttribute("data-new-layout", newLayout)
+      const root = document.createElement("div")
+      const opened: MarkdownFileReference[] = []
+      const handler = (reference: MarkdownFileReference) => opened.push(reference)
+      const cleanup = setupMarkdownFileClicks(root, () => handler)
+
+      root.innerHTML = [
+        '<a href="#" data-markdown-href="src/initial.ts:4" class="external-link">initial</a>',
+        "<code>src/styled.ts</code>",
+        "<code>https://opencode.ai/docs</code>",
+      ].join("")
+      decorateMarkdown(root, { copy: "Copy", copied: "Copied" }, handler)
+
+      root.querySelector<HTMLElement>('[data-file-path="src/initial.ts"]')!.click()
+      expect(root.querySelector<HTMLElement>('code[data-file-path="src/styled.ts"]')?.dataset.inlineCodeKind).toBe(
+        newLayout ? "path" : undefined,
+      )
+      expect(root.querySelector("code:last-child")?.parentElement?.classList.contains("external-link")).toBe(newLayout)
+
+      root.innerHTML = "<code>src/streamed.ts:9</code>"
+      decorateMarkdown(root, { copy: "Copy", copied: "Copied" }, handler)
+      root.querySelector<HTMLElement>('[data-file-path="src/streamed.ts"]')!.click()
+
+      expect(opened).toEqual([
+        { path: "src/initial.ts", line: 4 },
+        { path: "src/streamed.ts", line: 9 },
+      ])
+      cleanup()
+    }
+    document.body.removeAttribute("data-new-layout")
+  })
+
   test("opens explicit links and path-like inline code", () => {
     const root = document.createElement("div")
     root.innerHTML = [

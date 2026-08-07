@@ -146,6 +146,8 @@ export const createOpenAssistantFile = (input: {
   openTab: (tab: string) => unknown
   setActive: (tab: string) => void
   setSelectedLines: (path: string, range: { start: number; end: number } | null) => unknown
+  revealLine: (path: string, line: number) => unknown
+  clearLineReveal: (path: string) => unknown
   openFilePanel: () => void
 }): MarkdownFileOpenHandler => {
   return (reference: MarkdownFileReference) => {
@@ -156,6 +158,11 @@ export const createOpenAssistantFile = (input: {
     input.loadFile(path)
     input.openFilePanel()
     input.setActive(tab)
+    if (reference.line === undefined) {
+      input.clearLineReveal(path)
+      return
+    }
+    input.revealLine(path, reference.line)
   }
 }
 

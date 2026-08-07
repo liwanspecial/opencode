@@ -191,7 +191,10 @@ function disposeCopyButtons(root: Element) {
 function createMermaidBlock(source: string) {
   const host = document.createElement("div")
   host.setAttribute("data-slot", "markdown-mermaid-block")
-  mermaidBlockState.set(host, render(() => <MarkdownMermaidBlock source={source} />, host))
+  mermaidBlockState.set(
+    host,
+    render(() => <MarkdownMermaidBlock source={source} />, host),
+  )
   return host
 }
 
@@ -414,9 +417,7 @@ function markInlineCode(root: HTMLDivElement) {
 export function decorateMarkdownFileReferences(root: HTMLDivElement, onFileOpen: MarkdownFileOpenHandler | undefined) {
   if (!onFileOpen) return
 
-  root
-    .querySelectorAll<HTMLElement>("[data-file-path]")
-    .forEach((target) => markdownFileReferences.delete(target))
+  root.querySelectorAll<HTMLElement>("[data-file-path]").forEach((target) => markdownFileReferences.delete(target))
   root.querySelectorAll<HTMLAnchorElement>("a[data-markdown-href]").forEach((anchor) => {
     const reference = parseMarkdownFileReference(anchor.dataset.markdownHref ?? "", "link")
     if (!reference) return
@@ -442,14 +443,19 @@ function markFileReference(target: HTMLElement, reference: MarkdownFileReference
   else delete target.dataset.fileLine
 }
 
-function decorate(root: HTMLDivElement, labels: CopyLabels, onFileOpen: MarkdownFileOpenHandler | undefined) {
+export function decorateMarkdown(
+  root: HTMLDivElement,
+  labels: CopyLabels,
+  onFileOpen: MarkdownFileOpenHandler | undefined,
+) {
   const blocks = Array.from(root.querySelectorAll("pre"))
   for (const block of blocks) {
     ensureCodeWrapper(block, labels)
   }
-  if (!document.body.hasAttribute("data-new-layout")) return
-  markInlineCode(root)
+  const newLayout = document.body.hasAttribute("data-new-layout")
+  if (newLayout) markInlineCode(root)
   decorateMarkdownFileReferences(root, onFileOpen)
+  if (!newLayout) return
   markCodeLinks(root)
 }
 
@@ -804,7 +810,7 @@ function updateBlock(
   next.dataset.markdownHash = block.hash
   next.style.display = "contents"
   next.innerHTML = block.html
-  decorate(next, labels, onFileOpen)
+  decorateMarkdown(next, labels, onFileOpen)
 
   if (!(current instanceof HTMLDivElement)) {
     container.appendChild(next)
@@ -846,9 +852,13 @@ function updateCodeBlock(
   next.dataset.markdownComplete = block.complete ? "true" : "false"
   next.style.display = "contents"
 
-  const source = block.stable.concat(block.unstable).map((token) => token[0]).join("")
+  const source = block.stable
+    .concat(block.unstable)
+    .map((token) => token[0])
+    .join("")
   if (isMermaidBlock(block.language, source)) {
-    if (existing?.dataset.markdownHash === block.hash && existing.querySelector('[data-slot="markdown-mermaid-block"]')) return
+    if (existing?.dataset.markdownHash === block.hash && existing.querySelector('[data-slot="markdown-mermaid-block"]'))
+      return
     disposeMarkdownEnhancements(next)
     next.replaceChildren(createMermaidBlock(source))
     if (current && current !== next) {

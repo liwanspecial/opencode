@@ -23,17 +23,27 @@ describe("createOpenAssistantFile", () => {
       openTab: (tab) => calls.push(`open:${tab}`),
       setActive: (tab) => calls.push(`active:${tab}`),
       setSelectedLines: (path, range) => selected.push([path, range]),
+      revealLine: (path, line) => calls.push(`reveal:${path}:${line}`),
+      clearLineReveal: () => {},
       openFilePanel: () => calls.push("panel"),
     })
 
     open({ path: "C:/repo/src/app.tsx", line: 12 })
 
-    expect(calls).toEqual(["open:file://src/app.tsx", "load:src/app.tsx", "panel", "active:file://src/app.tsx"])
+    expect(calls).toEqual([
+      "open:file://src/app.tsx",
+      "load:src/app.tsx",
+      "panel",
+      "active:file://src/app.tsx",
+      "reveal:src/app.tsx:12",
+    ])
     expect(selected).toEqual([["src/app.tsx", { start: 12, end: 12 }]])
   })
 
   test("clears a previous line selection when no line is supplied", () => {
     const selected: Array<{ start: number; end: number } | null> = []
+    const revealed: number[] = []
+    const cleared: string[] = []
     const open = createOpenAssistantFile({
       normalizePath: (path) => path,
       tabForPath: (path) => `file://${path}`,
@@ -41,12 +51,44 @@ describe("createOpenAssistantFile", () => {
       openTab: () => {},
       setActive: () => {},
       setSelectedLines: (_path, range) => selected.push(range),
+      revealLine: (_path, line) => revealed.push(line),
+      clearLineReveal: (path) => cleared.push(path),
       openFilePanel: () => {},
     })
 
     open({ path: "src/app.tsx" })
 
     expect(selected).toEqual([null])
+    expect(revealed).toEqual([])
+    expect(cleared).toEqual(["src/app.tsx"])
+  })
+
+  test("requests a line reveal when reopening an already selected line", () => {
+    const selected: Array<{ start: number; end: number } | null> = []
+    const revealed: Array<[string, number]> = []
+    const open = createOpenAssistantFile({
+      normalizePath: (path) => path,
+      tabForPath: (path) => `file://${path}`,
+      loadFile: () => {},
+      openTab: () => {},
+      setActive: () => {},
+      setSelectedLines: (_path, range) => selected.push(range),
+      revealLine: (path, line) => revealed.push([path, line]),
+      clearLineReveal: () => {},
+      openFilePanel: () => {},
+    })
+
+    open({ path: "src/app.tsx", line: 12 })
+    open({ path: "src/app.tsx", line: 12 })
+
+    expect(selected).toEqual([
+      { start: 12, end: 12 },
+      { start: 12, end: 12 },
+    ])
+    expect(revealed).toEqual([
+      ["src/app.tsx", 12],
+      ["src/app.tsx", 12],
+    ])
   })
 })
 

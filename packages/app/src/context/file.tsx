@@ -70,6 +70,8 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     )
 
     const inflight = new Map<string, Promise<void>>()
+    const lineRevealers = new Map<string, (line: number) => boolean>()
+    const pendingLineReveals = new Map<string, number>()
     const [store, setStore] = createStore<{
       file: Record<string, FileState>
     }>({
@@ -109,6 +111,8 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     createEffect(() => {
       scope()
       inflight.clear()
+      lineRevealers.clear()
+      pendingLineReveals.clear()
       resetFileContentLru()
       batch(() => {
         setStore("file", reconcile({}))
@@ -261,6 +265,30 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const setScrollLeft = (input: string, left: number) => withPath(input, (file) => view().setScrollLeft(file, left))
     const setSelectedLines = (input: string, range: SelectedLineRange | null) =>
       withPath(input, (file) => view().setSelectedLines(file, range))
+    const revealLine = (input: string, line: number) =>
+      withPath(input, (file) => {
+        if (lineRevealers.get(file)?.(line)) {
+          pendingLineReveals.delete(file)
+          return
+        }
+        pendingLineReveals.set(file, line)
+      })
+    const registerLineRevealer = (input: string, reveal: ((line: number) => boolean) | undefined) =>
+      withPath(input, (file) => {
+        if (!reveal) {
+          lineRevealers.delete(file)
+          return
+        }
+        lineRevealers.set(file, reveal)
+        const pending = pendingLineReveals.get(file)
+        if (pending !== undefined) revealLine(file, pending)
+      })
+    const flushLineReveal = (input: string) =>
+      withPath(input, (file) => {
+        const pending = pendingLineReveals.get(file)
+        if (pending !== undefined) revealLine(file, pending)
+      })
+    const clearLineReveal = (input: string) => withPath(input, (file) => pendingLineReveals.delete(file))
 
     onCleanup(() => {
       stop()
@@ -295,6 +323,10 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       setScrollLeft,
       selectedLines,
       setSelectedLines,
+      revealLine,
+      registerLineRevealer,
+      flushLineReveal,
+      clearLineReveal,
       searchFiles: (query: string, options?: { limit?: number; signal?: AbortSignal }) =>
         search(query, "false", options),
       searchFilesAndDirectories: (query: string) => search(query, "true"),
