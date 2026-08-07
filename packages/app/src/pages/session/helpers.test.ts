@@ -3,6 +3,7 @@ import { createMemo, createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import {
   SESSION_OPEN_FILE_TAB,
+  createOpenAssistantFile,
   createOpenReviewFile,
   createOpenSessionFileTab,
   createSessionTabs,
@@ -10,6 +11,44 @@ import {
   getTabReorderIndex,
   shouldShowFileTree,
 } from "./helpers"
+
+describe("createOpenAssistantFile", () => {
+  test("normalizes, loads, opens, activates, and selects a line", () => {
+    const calls: string[] = []
+    const selected: Array<[string, { start: number; end: number } | null]> = []
+    const open = createOpenAssistantFile({
+      normalizePath: (path) => path.replace("C:/repo/", ""),
+      tabForPath: (path) => `file://${path}`,
+      loadFile: (path) => calls.push(`load:${path}`),
+      openTab: (tab) => calls.push(`open:${tab}`),
+      setActive: (tab) => calls.push(`active:${tab}`),
+      setSelectedLines: (path, range) => selected.push([path, range]),
+      openFilePanel: () => calls.push("panel"),
+    })
+
+    open({ path: "C:/repo/src/app.tsx", line: 12 })
+
+    expect(calls).toEqual(["open:file://src/app.tsx", "load:src/app.tsx", "panel", "active:file://src/app.tsx"])
+    expect(selected).toEqual([["src/app.tsx", { start: 12, end: 12 }]])
+  })
+
+  test("clears a previous line selection when no line is supplied", () => {
+    const selected: Array<{ start: number; end: number } | null> = []
+    const open = createOpenAssistantFile({
+      normalizePath: (path) => path,
+      tabForPath: (path) => `file://${path}`,
+      loadFile: () => {},
+      openTab: () => {},
+      setActive: () => {},
+      setSelectedLines: (_path, range) => selected.push(range),
+      openFilePanel: () => {},
+    })
+
+    open({ path: "src/app.tsx" })
+
+    expect(selected).toEqual([null])
+  })
+})
 
 describe("shouldShowFileTree", () => {
   test("does not reserve space for a disabled file tree", () => {
