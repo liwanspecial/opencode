@@ -16,6 +16,7 @@ import { Tabs } from "@opencode-ai/ui/tabs"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
 import { showToast } from "@/utils/toast"
 import { selectionFromLines, useFile, type FileSelection, type SelectedLineRange } from "@/context/file"
+import { createFileRestoreScheduler } from "@/context/file/line-reveal"
 import { useComments } from "@/context/comments"
 import { useLanguage } from "@/context/language"
 import { usePrompt } from "@/context/prompt"
@@ -89,10 +90,13 @@ function FileCommentMenuV2(props: {
 
 type ScrollPos = { x: number; y: number }
 
-function createScrollSync(input: { tab: () => string; view: ReturnType<typeof useSessionLayout>["view"] }) {
+function createScrollSync(input: {
+  tab: () => string
+  view: ReturnType<typeof useSessionLayout>["view"]
+  onRestoreQueued: () => void
+}) {
   let scroll: HTMLDivElement | undefined
   let scrollFrame: number | undefined
-  let restoreFrame: number | undefined
   let pending: ScrollPos | undefined
   const [code, setCode] = createSignal<HTMLElement[]>([])
 
@@ -166,14 +170,13 @@ function createScrollSync(input: { tab: () => string; view: ReturnType<typeof us
     if (el.scrollLeft !== pos.x) el.scrollLeft = pos.x
   }
 
-  const queueRestore = () => {
-    if (restoreFrame !== undefined) return
-
-    restoreFrame = requestAnimationFrame(() => {
-      restoreFrame = undefined
-      restore()
-    })
-  }
+  const restoreScheduler = createFileRestoreScheduler({
+    requestFrame: (callback) => requestAnimationFrame(callback),
+    cancelFrame: (id) => cancelAnimationFrame(id),
+    restore,
+    onQueued: input.onRestoreQueued,
+  })
+  const queueRestore = () => restoreScheduler.queue()
 
   const handleScroll = (event: Event & { currentTarget: HTMLDivElement }) => {
     if (code().length === 0) sync()
@@ -195,7 +198,7 @@ function createScrollSync(input: { tab: () => string; view: ReturnType<typeof us
 
   onCleanup(() => {
     if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
-    if (restoreFrame !== undefined) cancelAnimationFrame(restoreFrame)
+    restoreScheduler.dispose()
   })
 
   return {
@@ -266,6 +269,10 @@ function SessionFileViewV1(props: { tab: string }) {
   const scrollSync = createScrollSync({
     tab: () => props.tab,
     view,
+    onRestoreQueued: () => {
+      const p = path()
+      if (p) file.lineRevealRendered(p)
+    },
   })
 
   const selectionPreview = (source: string, selection: FileSelection) => {
@@ -465,11 +472,7 @@ function SessionFileViewV1(props: { tab: string }) {
         enableGutterUtility
         selectedLines={activeSelection()}
         commentedLines={commentedLines()}
-        onRendered={() => {
-          scrollSync.queueRestore()
-          const p = path()
-          if (p) file.lineRevealRendered(p)
-        }}
+        onRendered={scrollSync.queueRestore}
         annotations={commentsUi.annotations()}
         renderAnnotation={commentsUi.renderAnnotation}
         renderGutterUtility={commentsUi.renderGutterUtility}
@@ -558,6 +561,10 @@ function SessionFileViewV2(props: { tab: string }) {
   const scrollSync = createScrollSync({
     tab: () => props.tab,
     view,
+    onRestoreQueued: () => {
+      const p = path()
+      if (p) file.lineRevealRendered(p)
+    },
   })
 
   const selectionPreview = (source: string, selection: FileSelection) => {
@@ -755,11 +762,7 @@ function SessionFileViewV2(props: { tab: string }) {
         enableGutterUtility
         selectedLines={activeSelection()}
         commentedLines={commentedLines()}
-        onRendered={() => {
-          scrollSync.queueRestore()
-          const p = path()
-          if (p) file.lineRevealRendered(p)
-        }}
+        onRendered={scrollSync.queueRestore}
         annotations={commentsUi.annotations()}
         renderAnnotation={commentsUi.renderAnnotation}
         renderGutterUtility={commentsUi.renderGutterUtility}

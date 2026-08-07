@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createFileLineRevealController } from "./line-reveal"
+import { createFileLineRevealController, createFileRestoreScheduler } from "./line-reveal"
 
 function createFrames() {
   let next = 0
@@ -49,18 +49,23 @@ describe("createFileLineRevealController", () => {
     expect(calls).toEqual(["restore", "reveal:12"])
   })
 
-  test("reschedules a queued reveal behind a later render restoration", () => {
+  test("reschedules a queued reveal through the production restoration boundary", () => {
     const { frames, controller } = setup()
     const calls: string[] = []
     controller.register("src/a.ts", (line) => {
       calls.push(`reveal:${line}`)
       return true
     })
+    const restore = createFileRestoreScheduler({
+      requestFrame: (callback) => frames.request(callback),
+      cancelFrame: (id) => frames.cancel(id),
+      restore: () => calls.push("restore"),
+      onQueued: () => controller.rendered("src/a.ts"),
+    })
 
     controller.request("src/a.ts", 12)
     frames.flush()
-    frames.request(() => calls.push("restore"))
-    controller.rendered("src/a.ts")
+    restore.queue()
     frames.flush()
     expect(calls).toEqual(["restore"])
 

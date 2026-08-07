@@ -1,5 +1,30 @@
 type LineRevealer = (line: number) => boolean
 
+export function createFileRestoreScheduler(input: {
+  requestFrame: (callback: () => void) => number
+  cancelFrame: (id: number) => void
+  restore: () => void
+  onQueued: () => void
+}) {
+  let frame: number | undefined
+
+  return {
+    queue() {
+      if (frame !== undefined) return
+      frame = input.requestFrame(() => {
+        frame = undefined
+        input.restore()
+      })
+      input.onQueued()
+    },
+    dispose() {
+      if (frame === undefined) return
+      input.cancelFrame(frame)
+      frame = undefined
+    },
+  }
+}
+
 export function createFileLineRevealController(input: {
   requestFrame: (callback: () => void) => number
   cancelFrame: (id: number) => void
