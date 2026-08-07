@@ -237,12 +237,15 @@ function SessionFileViewV1(props: { tab: string }) {
   }).activeFileTab
 
   let find: FileSearchHandle | null = null
+  let unregisterLineRevealer: (() => void) | undefined
 
   const search = {
     register: (handle: FileSearchHandle | null) => {
       find = handle
+      unregisterLineRevealer?.()
+      unregisterLineRevealer = undefined
       const p = path()
-      if (p) file.registerLineRevealer(p, handle?.revealLine)
+      if (p && handle?.revealLine) unregisterLineRevealer = file.registerLineRevealer(p, handle.revealLine)
     },
   }
 
@@ -465,7 +468,7 @@ function SessionFileViewV1(props: { tab: string }) {
         onRendered={() => {
           scrollSync.queueRestore()
           const p = path()
-          if (p) requestAnimationFrame(() => file.flushLineReveal(p))
+          if (p) file.lineRevealRendered(p)
         }}
         annotations={commentsUi.annotations()}
         renderAnnotation={commentsUi.renderAnnotation}
@@ -526,12 +529,15 @@ function SessionFileViewV2(props: { tab: string }) {
   }).activeFileTab
 
   let find: FileSearchHandle | null = null
+  let unregisterLineRevealer: (() => void) | undefined
 
   const search = {
     register: (handle: FileSearchHandle | null) => {
       find = handle
+      unregisterLineRevealer?.()
+      unregisterLineRevealer = undefined
       const p = path()
-      if (p) file.registerLineRevealer(p, handle?.revealLine)
+      if (p && handle?.revealLine) unregisterLineRevealer = file.registerLineRevealer(p, handle.revealLine)
     },
   }
 
@@ -752,7 +758,7 @@ function SessionFileViewV2(props: { tab: string }) {
         onRendered={() => {
           scrollSync.queueRestore()
           const p = path()
-          if (p) requestAnimationFrame(() => file.flushLineReveal(p))
+          if (p) file.lineRevealRendered(p)
         }}
         annotations={commentsUi.annotations()}
         renderAnnotation={commentsUi.renderAnnotation}

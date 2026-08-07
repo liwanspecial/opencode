@@ -26,6 +26,7 @@ import { useServerSDK } from "./server-sdk"
 import { SessionRouteKey, SessionStateKey } from "@/utils/server-scope"
 import { createFileTreeStore } from "./file/tree-store"
 import { invalidateFromWatcher } from "./file/watcher"
+import { createFileLineRevealController } from "./file/line-reveal"
 import {
   selectionFromLines,
   type FileState,
@@ -70,8 +71,10 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     )
 
     const inflight = new Map<string, Promise<void>>()
-    const lineRevealers = new Map<string, (line: number) => boolean>()
-    const pendingLineReveals = new Map<string, number>()
+    const lineReveal = createFileLineRevealController({
+      requestFrame: (callback) => requestAnimationFrame(callback),
+      cancelFrame: (id) => cancelAnimationFrame(id),
+    })
     const [store, setStore] = createStore<{
       file: Record<string, FileState>
     }>({
@@ -111,8 +114,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     createEffect(() => {
       scope()
       inflight.clear()
-      lineRevealers.clear()
-      pendingLineReveals.clear()
+      lineReveal.dispose()
       resetFileContentLru()
       batch(() => {
         setStore("file", reconcile({}))
@@ -265,33 +267,14 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const setScrollLeft = (input: string, left: number) => withPath(input, (file) => view().setScrollLeft(file, left))
     const setSelectedLines = (input: string, range: SelectedLineRange | null) =>
       withPath(input, (file) => view().setSelectedLines(file, range))
-    const revealLine = (input: string, line: number) =>
-      withPath(input, (file) => {
-        if (lineRevealers.get(file)?.(line)) {
-          pendingLineReveals.delete(file)
-          return
-        }
-        pendingLineReveals.set(file, line)
-      })
-    const registerLineRevealer = (input: string, reveal: ((line: number) => boolean) | undefined) =>
-      withPath(input, (file) => {
-        if (!reveal) {
-          lineRevealers.delete(file)
-          return
-        }
-        lineRevealers.set(file, reveal)
-        const pending = pendingLineReveals.get(file)
-        if (pending !== undefined) revealLine(file, pending)
-      })
-    const flushLineReveal = (input: string) =>
-      withPath(input, (file) => {
-        const pending = pendingLineReveals.get(file)
-        if (pending !== undefined) revealLine(file, pending)
-      })
-    const clearLineReveal = (input: string) => withPath(input, (file) => pendingLineReveals.delete(file))
+    const revealLine = (input: string, line: number) => withPath(input, (file) => lineReveal.request(file, line))
+    const registerLineRevealer = (input: string, reveal: (line: number) => boolean) =>
+      lineReveal.register(path.normalize(input), reveal)
+    const lineRevealRendered = (input: string) => withPath(input, (file) => lineReveal.rendered(file))
 
     onCleanup(() => {
       stop()
+      lineReveal.dispose()
       viewCache.clear()
     })
 
@@ -325,8 +308,8 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       setSelectedLines,
       revealLine,
       registerLineRevealer,
-      flushLineReveal,
-      clearLineReveal,
+      lineRevealRendered,
+      cancelLineReveal: lineReveal.cancel,
       searchFiles: (query: string, options?: { limit?: number; signal?: AbortSignal }) =>
         search(query, "false", options),
       searchFilesAndDirectories: (query: string) => search(query, "true"),

@@ -24,13 +24,14 @@ describe("createOpenAssistantFile", () => {
       setActive: (tab) => calls.push(`active:${tab}`),
       setSelectedLines: (path, range) => selected.push([path, range]),
       revealLine: (path, line) => calls.push(`reveal:${path}:${line}`),
-      clearLineReveal: () => {},
+      cancelLineReveal: () => calls.push("cancel"),
       openFilePanel: () => calls.push("panel"),
     })
 
     open({ path: "C:/repo/src/app.tsx", line: 12 })
 
     expect(calls).toEqual([
+      "cancel",
       "open:file://src/app.tsx",
       "load:src/app.tsx",
       "panel",
@@ -43,29 +44,33 @@ describe("createOpenAssistantFile", () => {
   test("clears a previous line selection when no line is supplied", () => {
     const selected: Array<{ start: number; end: number } | null> = []
     const revealed: number[] = []
-    const cleared: string[] = []
+    const calls: string[] = []
     const open = createOpenAssistantFile({
       normalizePath: (path) => path,
       tabForPath: (path) => `file://${path}`,
-      loadFile: () => {},
-      openTab: () => {},
-      setActive: () => {},
-      setSelectedLines: (_path, range) => selected.push(range),
+      loadFile: () => calls.push("load"),
+      openTab: () => calls.push("open"),
+      setActive: () => calls.push("active"),
+      setSelectedLines: (_path, range) => {
+        calls.push("select")
+        selected.push(range)
+      },
       revealLine: (_path, line) => revealed.push(line),
-      clearLineReveal: (path) => cleared.push(path),
-      openFilePanel: () => {},
+      cancelLineReveal: () => calls.push("cancel"),
+      openFilePanel: () => calls.push("panel"),
     })
 
     open({ path: "src/app.tsx" })
 
     expect(selected).toEqual([null])
     expect(revealed).toEqual([])
-    expect(cleared).toEqual(["src/app.tsx"])
+    expect(calls).toEqual(["cancel", "select", "open", "load", "panel", "active"])
   })
 
   test("requests a line reveal when reopening an already selected line", () => {
     const selected: Array<{ start: number; end: number } | null> = []
     const revealed: Array<[string, number]> = []
+    let cancelled = 0
     const open = createOpenAssistantFile({
       normalizePath: (path) => path,
       tabForPath: (path) => `file://${path}`,
@@ -74,7 +79,7 @@ describe("createOpenAssistantFile", () => {
       setActive: () => {},
       setSelectedLines: (_path, range) => selected.push(range),
       revealLine: (path, line) => revealed.push([path, line]),
-      clearLineReveal: () => {},
+      cancelLineReveal: () => cancelled++,
       openFilePanel: () => {},
     })
 
@@ -89,6 +94,7 @@ describe("createOpenAssistantFile", () => {
       ["src/app.tsx", 12],
       ["src/app.tsx", 12],
     ])
+    expect(cancelled).toBe(2)
   })
 })
 

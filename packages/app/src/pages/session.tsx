@@ -545,7 +545,7 @@ export default function Page() {
     setActive: (tab) => tabs().setActive(tab),
     setSelectedLines: file.setSelectedLines,
     revealLine: file.revealLine,
-    clearLineReveal: file.clearLineReveal,
+    cancelLineReveal: file.cancelLineReveal,
     openFilePanel: openReviewPanel,
   })
 
