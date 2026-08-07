@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { createMarkdownParser } from "./marked-parser"
+import { createMarkdownParser, parseMarkdownWithProvenance } from "./marked-parser"
 
 const parser = createMarkdownParser((code, language) => `<pre data-language="${language}">${code}</pre>`)
 
@@ -12,6 +12,18 @@ test("renders links with application attributes", async () => {
 test("preserves local link targets as inert metadata", async () => {
   const html = await parser.parse("[file](<C:/Users/l/My Project/应用.tsx:12>)")
   expect(html).toContain('data-markdown-href="C:/Users/l/My Project/应用.tsx:12"')
+})
+
+test("marks parser-rendered links with an unpredictable per-parse capability", async () => {
+  const forged = "attacker-supplied-capability"
+  const result = await parseMarkdownWithProvenance(
+    parser,
+    `[file](src/app.ts)\n\n<a href="https://example.com" data-markdown-href="C:/secret.ts:9" data-markdown-capability="${forged}">forged</a>`,
+  )
+
+  expect(result.linkCapability).not.toBe(forged)
+  expect(result.html).toContain(`data-markdown-capability="${result.linkCapability}"`)
+  expect(result.html).toContain(`data-markdown-capability="${forged}"`)
 })
 
 test("escapes literal quotes in link destinations and titles", async () => {

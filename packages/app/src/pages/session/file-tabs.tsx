@@ -522,8 +522,7 @@ function SessionFileViewV1(props: { tab: string }) {
         class="h-full"
         viewportRef={scrollSync.setViewport}
         onScroll={scrollSync.handleScroll as any}
-        onWheel={deactivateLineReveal}
-        onTouchMove={deactivateLineReveal}
+        onUserScroll={deactivateLineReveal}
       >
         <Switch>
           <Match when={state()?.loaded}>{renderFile(contents())}</Match>
@@ -841,8 +840,7 @@ function SessionFileViewV2(props: { tab: string }) {
         class="h-full"
         viewportRef={scrollSync.setViewport}
         onScroll={scrollSync.handleScroll as any}
-        onWheel={deactivateLineReveal}
-        onTouchMove={deactivateLineReveal}
+        onUserScroll={deactivateLineReveal}
       >
         <Switch>
           <Match when={state()?.loaded}>{renderFile(contents())}</Match>

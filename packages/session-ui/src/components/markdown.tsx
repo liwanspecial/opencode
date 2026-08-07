@@ -43,7 +43,11 @@ import { isMermaidBlock } from "./markdown-mermaid"
 export type { MarkdownFileOpenHandler, MarkdownFileReference } from "./markdown-file-reference"
 
 type RenderedBlock =
-  | (MarkdownCacheEntry & { key: string; mode: Exclude<Block["mode"], "code"> })
+  | (Omit<MarkdownCacheEntry, "linkCapability"> & {
+      key: string
+      mode: Exclude<Block["mode"], "code">
+      linkCapability?: string
+    })
   | {
       key: string
       mode: "code"
@@ -414,11 +418,16 @@ function markInlineCode(root: HTMLDivElement) {
   }
 }
 
-export function decorateMarkdownFileReferences(root: HTMLDivElement, onFileOpen: MarkdownFileOpenHandler | undefined) {
+export function decorateMarkdownFileReferences(
+  root: HTMLDivElement,
+  onFileOpen: MarkdownFileOpenHandler | undefined,
+  linkCapability?: string,
+) {
   if (!onFileOpen) return
 
   root.querySelectorAll<HTMLElement>("[data-file-path]").forEach((target) => markdownFileReferences.delete(target))
   root.querySelectorAll<HTMLAnchorElement>("a[data-markdown-href]").forEach((anchor) => {
+    if (!linkCapability || anchor.dataset.markdownCapability !== linkCapability) return
     const reference = parseMarkdownFileReference(anchor.dataset.markdownHref ?? "", "link")
     if (!reference) return
     markFileReference(anchor, reference)
@@ -447,6 +456,7 @@ export function decorateMarkdown(
   root: HTMLDivElement,
   labels: CopyLabels,
   onFileOpen: MarkdownFileOpenHandler | undefined,
+  linkCapability?: string,
 ) {
   const blocks = Array.from(root.querySelectorAll("pre"))
   for (const block of blocks) {
@@ -454,7 +464,7 @@ export function decorateMarkdown(
   }
   const newLayout = document.body.hasAttribute("data-new-layout")
   if (newLayout) markInlineCode(root)
-  decorateMarkdownFileReferences(root, onFileOpen)
+  decorateMarkdownFileReferences(root, onFileOpen, linkCapability)
   if (!newLayout) return
   markCodeLinks(root)
 }
@@ -605,7 +615,7 @@ export function Markdown(
         projection: value,
       }
     },
-    async (src) => {
+    async (src): Promise<RenderResult> => {
       if (isServer)
         return {
           text: src.text,
@@ -652,9 +662,23 @@ export function Markdown(
           }
 
           const hash = checksum(block.raw)
-          const safe = sanitizeMarkdown(await parseMarkdown(block.src))
-          if (key && hash) touchCachedMarkdown(key, { raw: block.raw, hash, html: safe })
-          return { key: blockKey, mode: block.mode, raw: block.raw, hash: hash ?? "", html: safe }
+          const parsed = await parseMarkdown(block.src)
+          const safe = sanitizeMarkdown(parsed.html)
+          if (key && hash)
+            touchCachedMarkdown(key, {
+              raw: block.raw,
+              hash,
+              html: safe,
+              linkCapability: parsed.linkCapability,
+            })
+          return {
+            key: blockKey,
+            mode: block.mode,
+            raw: block.raw,
+            hash: hash ?? "",
+            html: safe,
+            linkCapability: parsed.linkCapability,
+          }
         }),
       )
         .then((blocks) => ({ text: src.text, blocks }) satisfies RenderResult)
@@ -810,7 +834,7 @@ function updateBlock(
   next.dataset.markdownHash = block.hash
   next.style.display = "contents"
   next.innerHTML = block.html
-  decorateMarkdown(next, labels, onFileOpen)
+  decorateMarkdown(next, labels, onFileOpen, block.linkCapability)
 
   if (!(current instanceof HTMLDivElement)) {
     container.appendChild(next)
@@ -835,7 +859,7 @@ function updateBlock(
       return true
     },
   })
-  decorateMarkdownFileReferences(current, onFileOpen)
+  decorateMarkdownFileReferences(current, onFileOpen, block.linkCapability)
 }
 
 function updateCodeBlock(

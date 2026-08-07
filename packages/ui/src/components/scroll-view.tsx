@@ -30,6 +30,8 @@ export interface ScrollViewProps extends ComponentProps<"div"> {
   thumbContainer?: HTMLElement | Accessor<HTMLElement | undefined>
   /** Element whose hover reveals the thumb. Defaults to the ScrollView root when unset. */
   thumbHoverTarget?: HTMLElement | Accessor<HTMLElement | undefined>
+  /** Called for user input that can change the viewport scroll position, never for scroll events themselves. */
+  onUserScroll?: () => void
 }
 
 export const scrollKey = (event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">) => {
@@ -64,6 +66,7 @@ export function scrollKeyOwner(
   target: EventTarget | null,
   key: NonNullable<ReturnType<typeof scrollKey>>,
 ) {
+  if (!target) return root
   const element = target instanceof Element ? target : undefined
   const owner = element?.closest<HTMLElement>("[data-scrollable]")
   if (!owner || owner === root) return root
@@ -71,7 +74,34 @@ export function scrollKeyOwner(
   return canScrollKey(owner, key) ? owner : root
 }
 
+export function createScrollViewUserInteractions(input: { viewport: () => HTMLDivElement; onUserScroll: () => void }) {
+  return {
+    keyDown(event: KeyboardEvent) {
+      const next = scrollKey(event)
+      if (!next) return
+      if (!isScrollKeyTarget(event.target, next)) return
+      if (scrollKeyOwner(input.viewport(), event.target, next) !== input.viewport()) return
+      input.onUserScroll()
+      return next
+    },
+    pointerDown(event: Pick<PointerEvent, "target">) {
+      if (event.target !== input.viewport()) return
+      input.onUserScroll()
+    },
+    thumbPointerDown() {
+      input.onUserScroll()
+    },
+    wheel() {
+      input.onUserScroll()
+    },
+    touchMove() {
+      input.onUserScroll()
+    },
+  }
+}
+
 export function isScrollKeyTarget(target: EventTarget | null, key: NonNullable<ReturnType<typeof scrollKey>>) {
+  if (!target) return true
   const element = target instanceof HTMLElement ? target : undefined
   if (!element) return true
   if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.isContentEditable) return false
@@ -109,6 +139,7 @@ export function ScrollView(props: ScrollViewProps) {
       "thumbVisibility",
       "thumbContainer",
       "thumbHoverTarget",
+      "onUserScroll",
       "style",
     ],
     [
@@ -127,6 +158,10 @@ export function ScrollView(props: ScrollViewProps) {
   let rootRef!: HTMLDivElement
   let viewportRef!: HTMLDivElement
   let thumbRef!: HTMLDivElement
+  const userInteractions = createScrollViewUserInteractions({
+    viewport: () => viewportRef,
+    onUserScroll: () => local.onUserScroll?.(),
+  })
 
   const resolveEl = (value: HTMLElement | Accessor<HTMLElement | undefined> | undefined) => {
     if (typeof value === "function") return value()
@@ -235,6 +270,7 @@ export function ScrollView(props: ScrollViewProps) {
   })
 
   const onThumbPointerDown = (e: PointerEvent) => {
+    userInteractions.thumbPointerDown()
     e.preventDefault()
     e.stopPropagation()
     setState("isDragging", true)
@@ -295,10 +331,8 @@ export function ScrollView(props: ScrollViewProps) {
     if (document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
       return
     }
-    const next = scrollKey(e)
+    const next = userInteractions.keyDown(e)
     if (!next) return
-    if (!isScrollKeyTarget(e.target, next)) return
-    if (scrollKeyOwner(viewportRef, e.target, next) !== viewportRef) return
 
     const scrollAmount = viewportRef.clientHeight * 0.8
     const lineAmount = 40
@@ -355,16 +389,27 @@ export function ScrollView(props: ScrollViewProps) {
           if (typeof events.onScroll === "function") events.onScroll(e as any)
         }}
         onWheel={(e) => {
+          userInteractions.wheel()
           markScrolling()
           const handler = events.onWheel
           if (typeof handler === "function") handler(e as any)
           if (Array.isArray(handler)) handler[0](handler[1], e as any)
         }}
         onTouchStart={events.onTouchStart as any}
-        onTouchMove={events.onTouchMove as any}
+        onTouchMove={(e) => {
+          userInteractions.touchMove()
+          const handler = events.onTouchMove
+          if (typeof handler === "function") handler(e as any)
+          if (Array.isArray(handler)) handler[0](handler[1], e as any)
+        }}
         onTouchEnd={events.onTouchEnd as any}
         onTouchCancel={events.onTouchCancel as any}
-        onPointerDown={events.onPointerDown as any}
+        onPointerDown={(e) => {
+          userInteractions.pointerDown(e)
+          const handler = events.onPointerDown
+          if (typeof handler === "function") handler(e as any)
+          if (Array.isArray(handler)) handler[0](handler[1], e as any)
+        }}
         onClick={events.onClick as any}
         tabIndex={0}
         role="region"

@@ -9,6 +9,7 @@ export function parseMarkdownFileReference(
 ): MarkdownFileReference | undefined {
   const raw = value.trim()
   if (!raw) return undefined
+  if (raw.startsWith("//")) return undefined
   if (/^(https?|mailto):/i.test(raw)) return undefined
   if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^[a-z]:[\\/]/i.test(raw) && !/^file:\/\//i.test(raw)) return undefined
 
@@ -19,6 +20,7 @@ export function parseMarkdownFileReference(
   const fileURL = /^file:\/\//i.test(withoutLine)
   const path = fileURL ? parseFileURL(withoutLine) : decode(withoutLine)
   if (path === undefined) return undefined
+  if (path.startsWith("//")) return undefined
   if (/^[a-z][a-z0-9+.-]*:/i.test(path) && !/^[a-z]:[\\/]/i.test(path)) return undefined
   if (!looksLikePath(path, source)) return undefined
 

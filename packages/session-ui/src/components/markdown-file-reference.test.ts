@@ -26,6 +26,8 @@ describe("parseMarkdownFileReference", () => {
   test.each([
     "https://opencode.ai/docs",
     "http://localhost:4444",
+    "//example.com/docs",
+    "//example.com/docs:9",
     "mailto:test@example.com",
     "javascript:alert(1)",
     "vscode://file/repo/app.tsx",

@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, mock, test } from "bun:test"
 import type { MarkdownFileReference } from "@opencode-ai/session-ui/markdown"
+import { createMarkdownParser, parseMarkdownWithProvenance } from "@opencode-ai/ui/context/marked-parser"
 
 mock.module("../../../../session-ui/src/components/markdown.worker.ts?worker&url", () => ({ default: "" }))
 
@@ -11,20 +12,60 @@ const { sanitizeMarkdown } = await import("@opencode-ai/session-ui/markdown-cach
 afterAll(() => mock.restore())
 
 describe("assistant Markdown file references", () => {
+  test("trusts only genuine Marked links after sanitization", async () => {
+    const parser = createMarkdownParser((code, language) => `<pre data-language="${language}">${code}</pre>`)
+    const forgedCapability = "attacker-supplied-capability"
+    const parsed = await parseMarkdownWithProvenance(
+      parser,
+      [
+        "[genuine](<C:/repo/app.ts:12>)",
+        `<a href="https://example.com/forged" data-markdown-href="C:/secret.ts:9" data-markdown-capability="${forgedCapability}" class="external-link">forged</a>`,
+        "[protocol-relative](//example.com/docs)",
+      ].join("\n\n"),
+    )
+    const root = document.createElement("div")
+    root.innerHTML = sanitizeMarkdown(parsed.html)
+    const opened: MarkdownFileReference[] = []
+    decorateMarkdownFileReferences(root, (reference) => opened.push(reference), parsed.linkCapability)
+    const cleanup = setupMarkdownFileClicks(root, () => (reference) => opened.push(reference))
+    const genuine = Array.from(root.querySelectorAll<HTMLAnchorElement>("a")).find(
+      (anchor) => anchor.textContent === "genuine",
+    )!
+    const forged = Array.from(root.querySelectorAll<HTMLAnchorElement>("a")).find(
+      (anchor) => anchor.textContent === "forged",
+    )!
+    const protocolRelative = Array.from(root.querySelectorAll<HTMLAnchorElement>("a")).find(
+      (anchor) => anchor.textContent === "protocol-relative",
+    )!
+
+    genuine.click()
+    forged.click()
+    protocolRelative.click()
+
+    expect(opened).toEqual([{ path: "C:/repo/app.ts", line: 12 }])
+    expect(genuine.classList.contains("file-link")).toBe(true)
+    expect(forged.classList.contains("external-link")).toBe(true)
+    expect(forged.href).toBe("https://example.com/forged")
+    expect(protocolRelative.classList.contains("external-link")).toBe(true)
+    expect(protocolRelative.getAttribute("href")).toBe("//example.com/docs")
+    cleanup()
+  })
+
   test("decorates initial and replaced blocks in legacy and new layouts", () => {
     for (const newLayout of [false, true]) {
       document.body.toggleAttribute("data-new-layout", newLayout)
+      const capability = `trusted-${newLayout}`
       const root = document.createElement("div")
       const opened: MarkdownFileReference[] = []
       const handler = (reference: MarkdownFileReference) => opened.push(reference)
       const cleanup = setupMarkdownFileClicks(root, () => handler)
 
       root.innerHTML = [
-        '<a href="#" data-markdown-href="src/initial.ts:4" class="external-link">initial</a>',
+        `<a href="#" data-markdown-href="src/initial.ts:4" data-markdown-capability="${capability}" class="external-link">initial</a>`,
         "<code>src/styled.ts</code>",
         "<code>https://opencode.ai/docs</code>",
       ].join("")
-      decorateMarkdown(root, { copy: "Copy", copied: "Copied" }, handler)
+      decorateMarkdown(root, { copy: "Copy", copied: "Copied" }, handler, capability)
 
       root.querySelector<HTMLElement>('[data-file-path="src/initial.ts"]')!.click()
       expect(root.querySelector<HTMLElement>('code[data-file-path="src/styled.ts"]')?.dataset.inlineCodeKind).toBe(
@@ -33,7 +74,7 @@ describe("assistant Markdown file references", () => {
       expect(root.querySelector("code:last-child")?.parentElement?.classList.contains("external-link")).toBe(newLayout)
 
       root.innerHTML = "<code>src/streamed.ts:9</code>"
-      decorateMarkdown(root, { copy: "Copy", copied: "Copied" }, handler)
+      decorateMarkdown(root, { copy: "Copy", copied: "Copied" }, handler, capability)
       root.querySelector<HTMLElement>('[data-file-path="src/streamed.ts"]')!.click()
 
       expect(opened).toEqual([
@@ -47,13 +88,14 @@ describe("assistant Markdown file references", () => {
 
   test("opens explicit links and path-like inline code", () => {
     const root = document.createElement("div")
+    const capability = "trusted"
     root.innerHTML = [
-      '<a href="#" data-markdown-href="C:/repo/My Project/应用.tsx:12" class="external-link" target="_blank" rel="noopener noreferrer">file</a>',
+      `<a href="#" data-markdown-href="C:/repo/My Project/应用.tsx:12" data-markdown-capability="${capability}" class="external-link" target="_blank" rel="noopener noreferrer">file</a>`,
       "<code>src/app.tsx#L7</code>",
-      '<a href="https://opencode.ai" data-markdown-href="https://opencode.ai" class="external-link">web</a>',
+      `<a href="https://opencode.ai" data-markdown-href="https://opencode.ai" data-markdown-capability="${capability}" class="external-link">web</a>`,
     ].join("")
     const opened: MarkdownFileReference[] = []
-    decorateMarkdownFileReferences(root, (reference) => opened.push(reference))
+    decorateMarkdownFileReferences(root, (reference) => opened.push(reference), capability)
     const cleanup = setupMarkdownFileClicks(root, () => (reference) => opened.push(reference))
 
     const link = root.querySelector<HTMLElement>('[data-file-path="C:/repo/My Project/应用.tsx"]')!
@@ -123,7 +165,7 @@ describe("assistant Markdown file references", () => {
       ].join(""),
     )
     const opened: MarkdownFileReference[] = []
-    decorateMarkdownFileReferences(root, (reference) => opened.push(reference))
+    decorateMarkdownFileReferences(root, (reference) => opened.push(reference), "trusted")
     const cleanup = setupMarkdownFileClicks(root, () => (reference) => opened.push(reference))
     const forged = Array.from(root.querySelectorAll<HTMLAnchorElement>("a"))
 
@@ -138,10 +180,11 @@ describe("assistant Markdown file references", () => {
 
   test("revokes runtime trust when a file element becomes external", () => {
     const root = document.createElement("div")
-    root.innerHTML = '<a href="#" data-markdown-href="src/app.ts" class="external-link">file</a>'
+    const capability = "trusted"
+    root.innerHTML = `<a href="#" data-markdown-href="src/app.ts" data-markdown-capability="${capability}" class="external-link">file</a>`
     const opened: MarkdownFileReference[] = []
     const handler = (reference: MarkdownFileReference) => opened.push(reference)
-    decorateMarkdownFileReferences(root, handler)
+    decorateMarkdownFileReferences(root, handler, capability)
     const cleanup = setupMarkdownFileClicks(root, () => handler)
     const link = root.querySelector<HTMLAnchorElement>("a")!
 
@@ -150,7 +193,7 @@ describe("assistant Markdown file references", () => {
     link.dataset.filePath = "C:/forged.ts"
     link.dataset.fileLine = "invalid"
     link.className = "external-link"
-    decorateMarkdownFileReferences(root, handler)
+    decorateMarkdownFileReferences(root, handler, capability)
     link.click()
 
     expect(opened).toEqual([])
