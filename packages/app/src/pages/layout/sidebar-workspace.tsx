@@ -472,6 +472,8 @@ export const LocalWorkspace = (props: {
   })
   const slug = createMemo(() => base64Encode(props.project.worktree))
   const sessions = createMemo(() => sortedRootSessions(workspace().store, props.sortNow()))
+  const open = createMemo(() => props.ctx.workspaceExpanded(props.project.worktree, true))
+  const branch = createMemo(() => workspace().store.vcs?.branch)
   const count = createMemo(() => sessions()?.length ?? 0)
   const fetching = useIsFetching(() => queryOptions().sessions(pathKey(props.project.worktree)))
   const hasMore = createMemo(() => workspace().store.sessionTotal > count())
@@ -480,6 +482,19 @@ export const LocalWorkspace = (props: {
     workspace().setStore("limit", (limit) => (limit ?? 0) + 5)
     await serverSync().project.loadSessions(props.project.worktree)
   }
+  const sessionList = () => (
+    <WorkspaceSessionList
+      slug={slug}
+      mobile={props.mobile}
+      ctx={props.ctx}
+      showNew={() => false}
+      loading={loading}
+      sessions={sessions}
+      hasMore={hasMore}
+      loadMore={loadMore}
+      language={language}
+    />
+  )
 
   return (
     <div
@@ -490,17 +505,38 @@ export const LocalWorkspace = (props: {
         "w-full": props.embedded,
       }}
     >
-      <WorkspaceSessionList
-        slug={slug}
-        mobile={props.mobile}
-        ctx={props.ctx}
-        showNew={() => false}
-        loading={loading}
-        sessions={sessions}
-        hasMore={hasMore}
-        loadMore={loadMore}
-        language={language}
-      />
+      <Show when={props.embedded} fallback={sessionList()}>
+        <Collapsible
+          variant="ghost"
+          open={open()}
+          class="shrink-0"
+          onOpenChange={(value) => props.ctx.setWorkspaceExpanded(props.project.worktree, value)}
+        >
+          <div class="py-1 group/workspace">
+            <Collapsible.Trigger
+              class="flex items-center justify-between w-full pl-2 pr-2 py-1.5 rounded-md hover:bg-surface-raised-base-hover"
+              data-action="workspace-toggle"
+              data-workspace={base64Encode(props.project.worktree)}
+            >
+              <WorkspaceHeader
+                local={() => true}
+                busy={() => props.ctx.isBusy(props.project.worktree)}
+                open={open}
+                directory={props.project.worktree}
+                language={language}
+                branch={branch}
+                workspaceValue={() => branch() ?? getFilename(props.project.worktree)}
+                workspaceEditActive={() => false}
+                InlineEditor={props.ctx.InlineEditor}
+                renameWorkspace={props.ctx.renameWorkspace}
+                setEditor={props.ctx.setEditor}
+                projectId={props.project.id}
+              />
+            </Collapsible.Trigger>
+          </div>
+          <Collapsible.Content>{sessionList()}</Collapsible.Content>
+        </Collapsible>
+      </Show>
     </div>
   )
 }

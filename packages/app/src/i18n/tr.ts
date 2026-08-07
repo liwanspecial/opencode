@@ -750,6 +750,8 @@ export const dict = {
   "sidebar.project.recentSessions": "Son oturumlar",
   "sidebar.project.viewAllSessions": "Tüm oturumları görüntüle",
   "sidebar.project.clearNotifications": "Bildirimleri temizle",
+  "sidebar.project.sessions.collapse": "Oturumları daralt",
+  "sidebar.project.sessions.expand": "Oturumları genişlet",
   "sidebar.empty.title": "Açık proje yok",
   "sidebar.empty.description": "Başlamak için bir proje açın",
 

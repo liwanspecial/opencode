@@ -628,6 +628,8 @@ export const dict = {
   "sidebar.project.recentSessions": "Nylige sesjoner",
   "sidebar.project.viewAllSessions": "Vis alle sesjoner",
   "sidebar.project.clearNotifications": "Fjern varsler",
+  "sidebar.project.sessions.collapse": "Fold sammen økter",
+  "sidebar.project.sessions.expand": "Utvid økter",
 
   "app.name.desktop": "OpenCode Desktop",
 

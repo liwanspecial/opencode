@@ -680,6 +680,8 @@ export const dict = {
   "sidebar.project.recentSessions": "最近のセッション",
   "sidebar.project.viewAllSessions": "すべてのセッションを表示",
   "sidebar.project.clearNotifications": "通知をクリア",
+  "sidebar.project.sessions.collapse": "セッションを折りたたむ",
+  "sidebar.project.sessions.expand": "セッションを展開",
   "sidebar.empty.title": "開いているプロジェクトはありません",
   "sidebar.empty.description": "プロジェクトを開いて始めましょう",
   "app.name.desktop": "OpenCode Desktop",

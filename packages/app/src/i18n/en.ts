@@ -821,6 +821,8 @@ export const dict = {
   "sidebar.project.recentSessions": "Recent sessions",
   "sidebar.project.viewAllSessions": "View all sessions",
   "sidebar.project.clearNotifications": "Clear notifications",
+  "sidebar.project.sessions.collapse": "Collapse sessions",
+  "sidebar.project.sessions.expand": "Expand sessions",
   "sidebar.empty.title": "No projects open",
   "sidebar.empty.description": "Open a project to get started",
 

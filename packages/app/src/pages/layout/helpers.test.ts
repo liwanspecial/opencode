@@ -18,7 +18,9 @@ import {
   homeProjectDirectories,
   homeSessionServerStatus,
   latestRootSession,
+  projectSessionsExpanded,
   toggleHomeProjectSelection,
+  workspaceExpansionState,
 } from "./helpers"
 import { pathKey } from "@/utils/path-key"
 import { ServerConnection } from "@/context/server"
@@ -111,6 +113,32 @@ describe("layout deep links", () => {
 })
 
 describe("layout workspace helpers", () => {
+  test("defaults project sessions to expanded", () => {
+    expect(projectSessionsExpanded({}, "/tmp/demo")).toBe(true)
+  })
+
+  test("reads project collapse state through normalized paths", () => {
+    expect(projectSessionsExpanded({ "c:/tmp/demo": true }, "C:\\TMP\\Demo\\")).toBe(false)
+  })
+
+  test("reads legacy workspace state through equivalent Windows paths", () => {
+    expect(workspaceExpansionState({ "C:\\Repo\\Demo": false }, "c:/repo/demo", true)).toBe(false)
+  })
+
+  test("prefers the historically toggled raw key over a stale slash key", () => {
+    expect(workspaceExpansionState({ "C:/Repo/Demo": true, "C:\\Repo\\Demo": false }, "c:/repo/demo", true)).toBe(false)
+  })
+
+  test("prefers the exact current raw key over a case-equivalent raw key", () => {
+    expect(workspaceExpansionState({ "C:\\Repo\\Demo": true, "c:\\repo\\demo": false }, "c:\\repo\\demo", true)).toBe(
+      false,
+    )
+  })
+
+  test("prefers the exact current slash key over a case-equivalent raw key", () => {
+    expect(workspaceExpansionState({ "C:\\Repo\\Demo": true, "c:/repo/demo": false }, "c:/repo/demo", true)).toBe(false)
+  })
+
   test("normalizes trailing slash in workspace key", () => {
     expect(String(pathKey("/tmp/demo///"))).toBe("/tmp/demo")
     expect(String(pathKey("C:\\tmp\\demo\\\\"))).toBe("C:/tmp/demo")

@@ -738,6 +738,8 @@ export const dict = {
   "sidebar.project.recentSessions": "เซสชันล่าสุด",
   "sidebar.project.viewAllSessions": "ดูเซสชันทั้งหมด",
   "sidebar.project.clearNotifications": "ล้างการแจ้งเตือน",
+  "sidebar.project.sessions.collapse": "ย่อเซสชัน",
+  "sidebar.project.sessions.expand": "ขยายเซสชัน",
   "sidebar.empty.title": "ไม่มีโปรเจกต์ที่เปิดอยู่",
   "sidebar.empty.description": "เปิดโปรเจกต์เพื่อเริ่มต้น",
 

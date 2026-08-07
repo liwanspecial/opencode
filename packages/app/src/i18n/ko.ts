@@ -558,6 +558,8 @@ export const dict = {
   "sidebar.project.recentSessions": "최근 세션",
   "sidebar.project.viewAllSessions": "모든 세션 보기",
   "sidebar.project.clearNotifications": "알림 지우기",
+  "sidebar.project.sessions.collapse": "세션 접기",
+  "sidebar.project.sessions.expand": "세션 펼치기",
   "app.name.desktop": "OpenCode Desktop",
   "settings.section.desktop": "데스크톱",
   "settings.section.server": "서버",

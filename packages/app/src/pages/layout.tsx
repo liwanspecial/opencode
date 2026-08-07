@@ -65,7 +65,10 @@ import {
   effectiveWorkspaceOrder,
   errorMessage,
   latestRootSession,
+  projectSessionsExpanded,
+  sidebarStateKey,
   sortedRootSessions,
+  workspaceExpansionState,
 } from "./layout/helpers"
 import {
   collectNewSessionDeepLinks,
@@ -95,6 +98,7 @@ export default function LegacyLayout(props: ParentProps) {
       workspaceName: {} as Record<string, string>,
       workspaceBranchName: {} as Record<string, Record<string, string>>,
       workspaceExpanded: {} as Record<string, boolean>,
+      projectSessionsCollapsed: {} as Record<string, boolean>,
       gettingStartedDismissed: false,
     }),
   )
@@ -577,6 +581,22 @@ export default function LegacyLayout(props: ParentProps) {
   const workspaceLabel = (directory: string, branch?: string, projectId?: string) =>
     workspaceName(directory, projectId, branch) ?? branch ?? getFilename(directory)
 
+  const workspaceExpanded = (directory: string, local: boolean) =>
+    workspaceExpansionState(store.workspaceExpanded, directory, local)
+
+  const setWorkspaceExpanded = (directory: string, value: boolean) => {
+    const target = sidebarStateKey(directory)
+    setStore(
+      "workspaceExpanded",
+      produce((draft) => {
+        for (const key of Object.keys(draft)) {
+          if (key !== target && sidebarStateKey(key) === target) delete draft[key]
+        }
+        draft[target] = value
+      }),
+    )
+  }
+
   const workspaceSetting = createMemo(() => {
     const project = currentProject()
     if (!project) return false
@@ -591,7 +611,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     const activeDir = currentDir()
     return workspaceIds(project).filter((directory) => {
-      const expanded = store.workspaceExpanded[directory] ?? directory === project.worktree
+      const expanded = workspaceExpanded(directory, directory === project.worktree)
       const active = pathKey(directory) === pathKey(activeDir)
       return expanded || active
     })
@@ -603,12 +623,14 @@ export default function LegacyLayout(props: ParentProps) {
     const projects = layout.projects.list()
     for (const [directory, expanded] of Object.entries(store.workspaceExpanded)) {
       if (!expanded) continue
-      const key = pathKey(directory)
       const project = projects.find(
-        (item) => pathKey(item.worktree) === key || item.sandboxes?.some((sandbox) => pathKey(sandbox) === key),
+        (item) =>
+          sidebarStateKey(item.worktree) === sidebarStateKey(directory) ||
+          item.sandboxes?.some((sandbox) => sidebarStateKey(sandbox) === sidebarStateKey(directory)),
       )
       if (!project) continue
       if (project.vcs === "git" && layout.sidebar.workspaces(project.worktree)()) continue
+      if (sidebarStateKey(project.worktree) === sidebarStateKey(directory)) continue
       setStore("workspaceExpanded", directory, false)
     }
   })
@@ -1171,10 +1193,12 @@ export default function LegacyLayout(props: ParentProps) {
   function syncSessionRoute(directory: string, id: string, root = activeProjectRoot(directory)) {
     rememberSessionRoute(directory, id, root)
     notification.session.markViewed(id)
-    const expanded = untrack(() => store.workspaceExpanded[directory])
-    if (expanded === false) {
-      setStore("workspaceExpanded", directory, true)
+    const projectKey = sidebarStateKey(root)
+    if (untrack(() => store.projectSessionsCollapsed[projectKey]) === true) {
+      setStore("projectSessionsCollapsed", projectKey, false)
     }
+    const local = sidebarStateKey(directory) === projectKey
+    if (!untrack(() => workspaceExpanded(directory, local))) setWorkspaceExpanded(directory, true)
     requestAnimationFrame(() => scrollToSession(id, `${directory}:${id}`))
     return root
   }
@@ -1714,7 +1738,7 @@ export default function LegacyLayout(props: ParentProps) {
 
         if (root === activeRoute.sessionProject) return
         activeRoute.directory = dir
-        activeRoute.sessionProject = rememberSessionRoute(dir, id, root)
+        activeRoute.sessionProject = syncSessionRoute(dir, id, root)
       },
     ),
   )
@@ -1862,10 +1886,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     setBusy(created.directory, true)
     WorktreeState.pending(serverSDK().scope, created.directory)
-    setStore("workspaceExpanded", key, true)
-    if (key !== created.directory) {
-      setStore("workspaceExpanded", created.directory, true)
-    }
+    setWorkspaceExpanded(created.directory, true)
     setStore("workspaceOrder", project.worktree, (prev) => {
       const existing = prev ?? []
       const next = existing.filter((item) => {
@@ -1896,8 +1917,8 @@ export default function LegacyLayout(props: ParentProps) {
     setEditor,
     InlineEditor,
     isBusy,
-    workspaceExpanded: (directory, local) => store.workspaceExpanded[directory] ?? local,
-    setWorkspaceExpanded: (directory, value) => setStore("workspaceExpanded", directory, value),
+    workspaceExpanded,
+    setWorkspaceExpanded,
     showResetWorkspaceDialog: (root, directory) =>
       dialog.show(() => <DialogResetWorkspace root={root} directory={directory} />),
     showDeleteWorkspaceDialog: (root, directory) =>
@@ -1929,6 +1950,9 @@ export default function LegacyLayout(props: ParentProps) {
     workspacesEnabled: (project) => project.vcs === "git" && layout.sidebar.workspaces(project.worktree)(),
     workspaceIds,
     workspaceLabel,
+    projectSessionsExpanded: (directory) => projectSessionsExpanded(store.projectSessionsCollapsed, directory),
+    setProjectSessionsExpanded: (directory, value) =>
+      setStore("projectSessionsCollapsed", sidebarStateKey(directory), !value),
     sessionProps: {
       navList: currentSessions,
       sidebarExpanded,
