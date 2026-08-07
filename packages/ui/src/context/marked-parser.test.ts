@@ -14,10 +14,24 @@ test("preserves local link targets as inert metadata", async () => {
   expect(html).toContain('data-markdown-href="C:/Users/l/My Project/应用.tsx:12"')
 })
 
-test("escapes link attributes", async () => {
-  const html = await parser.parse('[file](<src/a&quot; onclick=&quot;alert(1).ts>)')
+test("escapes literal quotes in link destinations and titles", async () => {
+  const html = await parser.parse(`[file](<src/a" onclick="alert(1).ts> 'say "hello"')`)
   expect(html).not.toContain(' onclick="')
-  expect(html).toContain("&amp;quot;")
+  expect(html).toContain('href="src/a&quot; onclick=&quot;alert(1).ts"')
+  expect(html).toContain('data-markdown-href="src/a&quot; onclick=&quot;alert(1).ts"')
+  expect(html).toContain('title="say &quot;hello&quot;"')
+})
+
+test("preserves entity-encoded HTTPS link attributes", async () => {
+  expect(await parser.parse('[OpenCode](<https://opencode.ai/search?q=a&amp;b=c> "A &quot;title&quot;")')).toContain(
+    'href="https://opencode.ai/search?q=a&amp;b=c" data-markdown-href="https://opencode.ai/search?q=a&amp;b=c" title="A &quot;title&quot;"',
+  )
+})
+
+test("preserves entity-encoded mailto link attributes", async () => {
+  expect(await parser.parse("[email](<mailto:test@example.com?subject=A&amp;body=B>)")).toContain(
+    'href="mailto:test@example.com?subject=A&amp;body=B" data-markdown-href="mailto:test@example.com?subject=A&amp;body=B"',
+  )
 })
 
 test("renders inline and block math", async () => {

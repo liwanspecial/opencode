@@ -3,7 +3,7 @@ import { Marked, type MarkedExtension, type Tokens } from "marked"
 import markedShiki from "marked-shiki"
 
 function escapeAttribute(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  return value.replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
 export function createMarkdownParser(highlight: (code: string, language: string) => string | Promise<string>) {
