@@ -9,10 +9,12 @@ import {
 
 describe("sessionPanelWidthMax", () => {
   test("reserves the unified review pane minimum", () => {
+    expect(REVIEW_PANE_WIDTH_MIN).toBe(360)
     expect(sessionPanelWidthMax({ available: 1700, split: false })).toBe(1700 - REVIEW_PANE_WIDTH_MIN)
   })
 
   test("reserves a larger minimum for split diffs", () => {
+    expect(REVIEW_PANE_WIDTH_MIN_SPLIT).toBe(640)
     expect(sessionPanelWidthMax({ available: 1700, split: true })).toBe(1700 - REVIEW_PANE_WIDTH_MIN_SPLIT)
     expect(REVIEW_PANE_WIDTH_MIN_SPLIT).toBeGreaterThan(REVIEW_PANE_WIDTH_MIN)
   })
