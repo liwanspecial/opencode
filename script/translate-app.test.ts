@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import path from "path"
 import {
   findDrift,
   glossaryFile,
   modelVariants,
+  opencodeCommand,
   parseTranslationArgs,
   runPool,
   sessionIDFromEvents,
@@ -14,6 +16,18 @@ import {
 } from "./translate-app"
 
 describe("translate app", () => {
+  test("runs the repository CLI source without relying on a package bin shim", () => {
+    expect(opencodeCommand("C:/repo", ["--pure", "models", "opencode"])).toEqual([
+      process.execPath,
+      "run",
+      "--conditions=browser",
+      path.join("C:/repo", "packages/opencode/src/index.ts"),
+      "--pure",
+      "models",
+      "opencode",
+    ])
+  })
+
   test("parses one locale with the public model defaults", () => {
     expect(parseTranslationArgs(["fr"])).toEqual({
       target: "fr",
