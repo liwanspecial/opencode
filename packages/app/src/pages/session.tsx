@@ -453,6 +453,7 @@ export default function Page() {
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const size = createSizing()
+  let reviewDragClosed = false
   const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
   const desktopV2ReviewOpen = createMemo(() => newSessionDesign() && desktopReviewOpen() && !!params.id)
   const desktopSessionReviewOpen = createMemo(() => (newSessionDesign() ? desktopV2ReviewOpen() : desktopReviewOpen()))
@@ -479,7 +480,6 @@ export default function Page() {
     () => panelRow,
     ({ width }) => setPanelRowWidth(width),
   )
-  const splitReview = createMemo(() => desktopSessionReviewOpen() && layout.review.diffStyle() === "split")
   // The observer reports the content-box width, which already excludes the row
   // padding; only the flex gap between the panels remains to subtract.
   const sessionPanelAvailable = createMemo(() => {
@@ -490,7 +490,7 @@ export default function Page() {
   const sessionPanelMax = createMemo(() => {
     const available = sessionPanelAvailable()
     if (available === undefined) return 1000
-    return sessionPanelWidthMax({ available, review: desktopSessionReviewOpen(), split: splitReview() })
+    return sessionPanelWidthMax({ available, review: desktopSessionReviewOpen() })
   })
   // Clamp at render time so window or sidebar resizes squeeze the chat panel
   // instead of the review pane, without overwriting the persisted width.
@@ -499,7 +499,6 @@ export default function Page() {
       width: layout.session.width(),
       available: sessionPanelAvailable(),
       review: desktopSessionReviewOpen(),
-      split: splitReview(),
     }),
   )
   const sessionPanelWidth = createMemo(() => {
@@ -2302,7 +2301,12 @@ export default function Page() {
           )}
 
           <Show when={desktopSessionResizeOpen()}>
-            <div onPointerDown={() => size.start()}>
+            <div
+              onPointerDown={() => {
+                reviewDragClosed = false
+                size.start()
+              }}
+            >
               <ResizeHandle
                 classList={{
                   "-end-1": settings.general.newLayoutDesigns(),
@@ -2312,7 +2316,14 @@ export default function Page() {
                 min={SESSION_PANEL_WIDTH_MIN}
                 max={sessionPanelMax()}
                 onResize={(width) => {
+                  if (reviewDragClosed) return
                   size.touch()
+                  if (desktopSessionReviewOpen() && width >= sessionPanelMax()) {
+                    reviewDragClosed = true
+                    layout.session.reset()
+                    view().reviewPanel.close()
+                    return
+                  }
                   layout.session.resize(width)
                 }}
               />
