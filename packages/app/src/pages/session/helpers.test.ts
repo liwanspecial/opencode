@@ -3,6 +3,7 @@ import { createMemo, createRoot } from "solid-js"
 import { createStore } from "solid-js/store"
 import {
   SESSION_OPEN_FILE_TAB,
+  createOpenAssistantFile,
   createOpenReviewFile,
   createOpenSessionFileTab,
   createSessionTabs,
@@ -10,6 +11,92 @@ import {
   getTabReorderIndex,
   shouldShowFileTree,
 } from "./helpers"
+
+describe("createOpenAssistantFile", () => {
+  test("normalizes, loads, opens, activates, and selects a line", () => {
+    const calls: string[] = []
+    const selected: Array<[string, { start: number; end: number } | null]> = []
+    const open = createOpenAssistantFile({
+      normalizePath: (path) => path.replace("C:/repo/", ""),
+      tabForPath: (path) => `file://${path}`,
+      loadFile: (path) => calls.push(`load:${path}`),
+      openTab: (tab) => calls.push(`open:${tab}`),
+      setActive: (tab) => calls.push(`active:${tab}`),
+      setSelectedLines: (path, range) => selected.push([path, range]),
+      revealLine: (path, line) => calls.push(`reveal:${path}:${line}`),
+      cancelLineReveal: () => calls.push("cancel"),
+      openFilePanel: () => calls.push("panel"),
+    })
+
+    open({ path: "C:/repo/src/app.tsx", line: 12 })
+
+    expect(calls).toEqual([
+      "cancel",
+      "open:file://src/app.tsx",
+      "load:src/app.tsx",
+      "panel",
+      "active:file://src/app.tsx",
+      "reveal:src/app.tsx:12",
+    ])
+    expect(selected).toEqual([["src/app.tsx", { start: 12, end: 12 }]])
+  })
+
+  test("clears a previous line selection when no line is supplied", () => {
+    const selected: Array<{ start: number; end: number } | null> = []
+    const revealed: number[] = []
+    const calls: string[] = []
+    const open = createOpenAssistantFile({
+      normalizePath: (path) => path,
+      tabForPath: (path) => `file://${path}`,
+      loadFile: () => calls.push("load"),
+      openTab: () => calls.push("open"),
+      setActive: () => calls.push("active"),
+      setSelectedLines: (_path, range) => {
+        calls.push("select")
+        selected.push(range)
+      },
+      revealLine: (_path, line) => revealed.push(line),
+      cancelLineReveal: () => calls.push("cancel"),
+      openFilePanel: () => calls.push("panel"),
+    })
+
+    open({ path: "src/app.tsx" })
+
+    expect(selected).toEqual([null])
+    expect(revealed).toEqual([])
+    expect(calls).toEqual(["cancel", "select", "open", "load", "panel", "active"])
+  })
+
+  test("requests a line reveal when reopening an already selected line", () => {
+    const selected: Array<{ start: number; end: number } | null> = []
+    const revealed: Array<[string, number]> = []
+    let cancelled = 0
+    const open = createOpenAssistantFile({
+      normalizePath: (path) => path,
+      tabForPath: (path) => `file://${path}`,
+      loadFile: () => {},
+      openTab: () => {},
+      setActive: () => {},
+      setSelectedLines: (_path, range) => selected.push(range),
+      revealLine: (path, line) => revealed.push([path, line]),
+      cancelLineReveal: () => cancelled++,
+      openFilePanel: () => {},
+    })
+
+    open({ path: "src/app.tsx", line: 12 })
+    open({ path: "src/app.tsx", line: 12 })
+
+    expect(selected).toEqual([
+      { start: 12, end: 12 },
+      { start: 12, end: 12 },
+    ])
+    expect(revealed).toEqual([
+      ["src/app.tsx", 12],
+      ["src/app.tsx", 12],
+    ])
+    expect(cancelled).toBe(2)
+  })
+})
 
 describe("shouldShowFileTree", () => {
   test("does not reserve space for a disabled file tree", () => {

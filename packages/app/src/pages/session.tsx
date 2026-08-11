@@ -70,7 +70,13 @@ import {
   createSessionComposerRegionController,
   SessionComposerRegion,
 } from "@/pages/session/composer"
-import { createOpenReviewFile, createSessionTabs, createSizing, shouldShowFileTree } from "@/pages/session/helpers"
+import {
+  createOpenAssistantFile,
+  createOpenReviewFile,
+  createSessionTabs,
+  createSizing,
+  shouldShowFileTree,
+} from "@/pages/session/helpers"
 import { MessageTimeline } from "@/pages/session/timeline/message-timeline"
 import { createTimelineModel } from "@/pages/session/timeline/model"
 import { type DiffStyle, SessionReviewTab, type SessionReviewTabProps } from "@/pages/session/review-tab"
@@ -447,8 +453,10 @@ export default function Page() {
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const size = createSizing()
+  let reviewDragClosed = false
   const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
   const desktopV2ReviewOpen = createMemo(() => newSessionDesign() && desktopReviewOpen() && !!params.id)
+  const desktopSessionReviewOpen = createMemo(() => (newSessionDesign() ? desktopV2ReviewOpen() : desktopReviewOpen()))
   const terminalOpen = createMemo(() => view().terminal.opened())
   const desktopTerminalOpen = createMemo(() => isDesktop() && terminalOpen())
   const desktopInlineTerminalOnlyOpen = createMemo(
@@ -462,8 +470,8 @@ export default function Page() {
         opened: layout.fileTree.opened(),
       }),
   )
-  const desktopSessionResizeOpen = createMemo(() =>
-    newSessionDesign() ? desktopV2ReviewOpen() || desktopTerminalOpen() : desktopReviewOpen(),
+  const desktopSessionResizeOpen = createMemo(
+    () => desktopSessionReviewOpen() || (newSessionDesign() && desktopTerminalOpen()),
   )
   const desktopSidePanelOpen = createMemo(() => desktopSessionResizeOpen() || desktopFileTreeOpen())
   let panelRow: HTMLDivElement | undefined
@@ -471,9 +479,6 @@ export default function Page() {
   createResizeObserver(
     () => panelRow,
     ({ width }) => setPanelRowWidth(width),
-  )
-  const splitReview = createMemo(
-    () => (newSessionDesign() ? desktopV2ReviewOpen() : desktopReviewOpen()) && layout.review.diffStyle() === "split",
   )
   // The observer reports the content-box width, which already excludes the row
   // padding; only the flex gap between the panels remains to subtract.
@@ -485,7 +490,7 @@ export default function Page() {
   const sessionPanelMax = createMemo(() => {
     const available = sessionPanelAvailable()
     if (available === undefined) return 1000
-    return sessionPanelWidthMax({ available, split: splitReview() })
+    return sessionPanelWidthMax({ available, review: desktopSessionReviewOpen() })
   })
   // Clamp at render time so window or sidebar resizes squeeze the chat panel
   // instead of the review pane, without overwriting the persisted width.
@@ -493,7 +498,7 @@ export default function Page() {
     clampSessionPanelWidth({
       width: layout.session.width(),
       available: sessionPanelAvailable(),
-      split: splitReview(),
+      review: desktopSessionReviewOpen(),
     }),
   )
   const sessionPanelWidth = createMemo(() => {
@@ -530,6 +535,18 @@ export default function Page() {
   const openReviewPanel = () => {
     if (!view().reviewPanel.opened()) view().reviewPanel.open()
   }
+
+  const openAssistantFile = createOpenAssistantFile({
+    normalizePath: file.normalize,
+    tabForPath: file.tab,
+    loadFile: file.load,
+    openTab: (tab) => tabs().open(tab),
+    setActive: (tab) => tabs().setActive(tab),
+    setSelectedLines: file.setSelectedLines,
+    revealLine: file.revealLine,
+    cancelLineReveal: file.cancelLineReveal,
+    openFilePanel: openReviewPanel,
+  })
 
   const info = createMemo(() => (params.id ? sync().session.get(params.id) : undefined))
   const isChildSession = createMemo(() => !!info()?.parentID)
@@ -2085,6 +2102,7 @@ export default function Page() {
               {(_id) => (
                 <MessageTimeline
                   actions={actions}
+                  onFileOpen={openAssistantFile}
                   scroll={ui.scroll}
                   onResumeScroll={resumeScroll}
                   setScrollRef={setScrollRef}
@@ -2283,7 +2301,12 @@ export default function Page() {
           )}
 
           <Show when={desktopSessionResizeOpen()}>
-            <div onPointerDown={() => size.start()}>
+            <div
+              onPointerDown={() => {
+                reviewDragClosed = false
+                size.start()
+              }}
+            >
               <ResizeHandle
                 classList={{
                   "-end-1": settings.general.newLayoutDesigns(),
@@ -2293,7 +2316,14 @@ export default function Page() {
                 min={SESSION_PANEL_WIDTH_MIN}
                 max={sessionPanelMax()}
                 onResize={(width) => {
+                  if (reviewDragClosed) return
                   size.touch()
+                  if (desktopSessionReviewOpen() && width >= sessionPanelMax()) {
+                    reviewDragClosed = true
+                    layout.session.reset()
+                    view().reviewPanel.close()
+                    return
+                  }
                   layout.session.resize(width)
                 }}
               />

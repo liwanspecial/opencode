@@ -1,6 +1,7 @@
 import type { Projection } from "./markdown-stream"
 
 export type MarkdownToken = [content: string, style: string]
+export type MarkdownParseResult = { html: string; linkCapability: string }
 
 export type MarkdownWorkerRequest =
   | { type: "parse"; id: number; text: string }
@@ -9,7 +10,7 @@ export type MarkdownWorkerRequest =
   | { type: "dispose"; key: string }
 
 export type MarkdownWorkerResponse =
-  | { type: "parse"; id: number; html: string }
+  | ({ type: "parse"; id: number } & MarkdownParseResult)
   | { type: "project"; id: number; key: string; projection: Projection }
   | {
       type: "highlight"

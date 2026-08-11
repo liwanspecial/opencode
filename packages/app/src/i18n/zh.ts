@@ -1,4 +1,4 @@
-import { dict as en } from "./en"
+﻿import { dict as en } from "./en"
 
 type Keys = keyof typeof en
 
@@ -205,6 +205,8 @@ export const dict = {
   "command.workspace.toggle": "切换工作区",
   "command.workspace.toggle.description": "在侧边栏启用或禁用多个工作区",
 
+  "command.session.rename": "重命名会话",
+  "command.session.rename.description": "修改当前会话标题",
   "command.session.undo": "撤销",
   "command.session.undo.description": "撤销上一条消息",
   "command.session.redo": "重做",
@@ -579,6 +581,10 @@ export const dict = {
   "dialog.project.edit.worktree.startup": "工作区启动脚本",
   "dialog.project.edit.worktree.startup.description": "创建新工作区 (worktree) 后运行。",
   "dialog.project.edit.worktree.startup.placeholder": "例如 bun install",
+  "dialog.session.rename.title": "重命名会话",
+  "dialog.session.rename.name": "会话名称",
+  "dialog.session.rename.error.empty": "请输入会话名称。",
+  "dialog.session.rename.failed.title": "重命名会话失败",
 
   "dialog.usageExceeded.dontShowAgain": "不再显示",
 
@@ -743,6 +749,7 @@ export const dict = {
   "session.tab.session": "会话",
   "session.tab.review": "审查",
   "session.tab.context": "上下文",
+  "session.tab.files": "文件列表",
   "session.tab.unknown": "未知会话",
   "session.panel.reviewAndFiles": "审查和文件",
   "session.error.notFound": "找不到此会话",
@@ -857,6 +864,7 @@ export const dict = {
   "common.delete": "删除",
   "common.close": "关闭",
   "common.edit": "编辑",
+  "common.refresh": "刷新",
   "common.loadMore": "加载更多",
   "common.key.esc": "ESC",
 
@@ -872,6 +880,8 @@ export const dict = {
   "sidebar.project.recentSessions": "最近会话",
   "sidebar.project.viewAllSessions": "查看全部会话",
   "sidebar.project.clearNotifications": "清除通知",
+  "sidebar.project.sessions.collapse": "折叠会话",
+  "sidebar.project.sessions.expand": "展开会话",
   "sidebar.empty.title": "没有打开的项目",
   "sidebar.empty.description": "打开一个项目以开始使用",
 
@@ -908,6 +918,20 @@ export const dict = {
   "settings.general.row.theme.description": "自定义 OpenCode 的主题。",
   "settings.general.row.font.title": "代码字体",
   "settings.general.row.font.description": "自定义代码块使用的字体",
+  "settings.general.background.image.title": "背景图片",
+  "settings.general.background.image.description": "选择一张本地图片作为应用背景",
+  "settings.general.background.choose": "选择图片",
+  "settings.general.background.choose.title": "选择背景图片",
+  "settings.general.background.clear": "清除",
+  "settings.general.background.enabled.title": "显示背景图片",
+  "settings.general.background.enabled.description": "以低透明度显示所选图片作为应用背景",
+  "settings.general.background.fit.title": "背景布局",
+  "settings.general.background.fit.description": "选择背景图片的显示方式",
+  "settings.general.background.fit.cover": "铺满",
+  "settings.general.background.fit.contain": "适应",
+  "settings.general.background.fit.repeat": "平铺",
+  "settings.general.background.opacity.title": "背景透明度",
+  "settings.general.background.blur.title": "背景模糊",
   "settings.general.row.terminalFont.title": "终端字体",
   "settings.general.row.terminalFont.description": "自定义终端使用的字体",
   "settings.general.row.uiFont.title": "界面字体",
@@ -1100,6 +1124,18 @@ export const dict = {
   "session.delete.title": "删除会话",
   "session.delete.confirm": '删除会话 "{{name}}"？',
   "session.delete.button": "删除会话",
+  "dialog.archivedSessions.menu": "归档会话",
+  "dialog.archivedSessions.title": "归档会话",
+  "dialog.archivedSessions.empty": "暂无归档会话",
+  "dialog.archivedSessions.search.placeholder": "搜索归档会话",
+  "dialog.archivedSessions.restore": "恢复",
+  "dialog.archivedSessions.delete": "彻底删除",
+  "dialog.archivedSessions.delete.confirm": '彻底删除会话 "{{name}}"？',
+  "dialog.archivedSessions.loadFailed.title": "加载归档会话失败",
+  "dialog.archivedSessions.restoreFailed.title": "恢复会话失败",
+  "settings.general.row.archivedSessions.title": "归档会话管理",
+  "settings.general.row.archivedSessions.description": "查看所有已归档会话，并选择恢复或彻底删除。",
+  "settings.general.row.archivedSessions.action": "管理",
 
   "workspace.new": "新建工作区",
   "workspace.type.local": "本地",

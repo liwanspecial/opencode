@@ -65,7 +65,10 @@ import {
   effectiveWorkspaceOrder,
   errorMessage,
   latestRootSession,
+  projectSessionsExpanded,
+  sidebarStateKey,
   sortedRootSessions,
+  workspaceExpansionState,
 } from "./layout/helpers"
 import {
   collectNewSessionDeepLinks,
@@ -95,6 +98,7 @@ export default function LegacyLayout(props: ParentProps) {
       workspaceName: {} as Record<string, string>,
       workspaceBranchName: {} as Record<string, Record<string, string>>,
       workspaceExpanded: {} as Record<string, boolean>,
+      projectSessionsCollapsed: {} as Record<string, boolean>,
       gettingStartedDismissed: false,
     }),
   )
@@ -577,6 +581,22 @@ export default function LegacyLayout(props: ParentProps) {
   const workspaceLabel = (directory: string, branch?: string, projectId?: string) =>
     workspaceName(directory, projectId, branch) ?? branch ?? getFilename(directory)
 
+  const workspaceExpanded = (directory: string, local: boolean) =>
+    workspaceExpansionState(store.workspaceExpanded, directory, local)
+
+  const setWorkspaceExpanded = (directory: string, value: boolean) => {
+    const target = sidebarStateKey(directory)
+    setStore(
+      "workspaceExpanded",
+      produce((draft) => {
+        for (const key of Object.keys(draft)) {
+          if (key !== target && sidebarStateKey(key) === target) delete draft[key]
+        }
+        draft[target] = value
+      }),
+    )
+  }
+
   const workspaceSetting = createMemo(() => {
     const project = currentProject()
     if (!project) return false
@@ -591,7 +611,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     const activeDir = currentDir()
     return workspaceIds(project).filter((directory) => {
-      const expanded = store.workspaceExpanded[directory] ?? directory === project.worktree
+      const expanded = workspaceExpanded(directory, directory === project.worktree)
       const active = pathKey(directory) === pathKey(activeDir)
       return expanded || active
     })
@@ -603,12 +623,14 @@ export default function LegacyLayout(props: ParentProps) {
     const projects = layout.projects.list()
     for (const [directory, expanded] of Object.entries(store.workspaceExpanded)) {
       if (!expanded) continue
-      const key = pathKey(directory)
       const project = projects.find(
-        (item) => pathKey(item.worktree) === key || item.sandboxes?.some((sandbox) => pathKey(sandbox) === key),
+        (item) =>
+          sidebarStateKey(item.worktree) === sidebarStateKey(directory) ||
+          item.sandboxes?.some((sandbox) => sidebarStateKey(sandbox) === sidebarStateKey(directory)),
       )
       if (!project) continue
       if (project.vcs === "git" && layout.sidebar.workspaces(project.worktree)()) continue
+      if (sidebarStateKey(project.worktree) === sidebarStateKey(directory)) continue
       setStore("workspaceExpanded", directory, false)
     }
   })
@@ -895,6 +917,14 @@ export default function LegacyLayout(props: ParentProps) {
     }
   }
 
+  function renameSession(session: Session) {
+    void import("@/components/dialog-rename-session").then((x) => {
+      dialog.show(() => (
+        <x.DialogRenameSession sessionID={session.id} title={session.title} directory={session.directory} />
+      ))
+    })
+  }
+
   command.register("layout", () => {
     const commands: CommandOption[] = [
       {
@@ -1163,10 +1193,12 @@ export default function LegacyLayout(props: ParentProps) {
   function syncSessionRoute(directory: string, id: string, root = activeProjectRoot(directory)) {
     rememberSessionRoute(directory, id, root)
     notification.session.markViewed(id)
-    const expanded = untrack(() => store.workspaceExpanded[directory])
-    if (expanded === false) {
-      setStore("workspaceExpanded", directory, true)
+    const projectKey = sidebarStateKey(root)
+    if (untrack(() => store.projectSessionsCollapsed[projectKey]) === true) {
+      setStore("projectSessionsCollapsed", projectKey, false)
     }
+    const local = sidebarStateKey(directory) === projectKey
+    if (!untrack(() => workspaceExpanded(directory, local))) setWorkspaceExpanded(directory, true)
     requestAnimationFrame(() => scrollToSession(id, `${directory}:${id}`))
     return root
   }
@@ -1706,7 +1738,7 @@ export default function LegacyLayout(props: ParentProps) {
 
         if (root === activeRoute.sessionProject) return
         activeRoute.directory = dir
-        activeRoute.sessionProject = rememberSessionRoute(dir, id, root)
+        activeRoute.sessionProject = syncSessionRoute(dir, id, root)
       },
     ),
   )
@@ -1714,12 +1746,13 @@ export default function LegacyLayout(props: ParentProps) {
   createEffect(() => {
     document.documentElement.style.setProperty(
       "--dialog-left-margin",
-      `${layout.sidebar.opened() ? layout.sidebar.width() : 48}px`,
+      `${side()}px`,
     )
   })
 
-  const side = createMemo(() => Math.max(layout.sidebar.width(), 244))
-  const panel = createMemo(() => Math.max(side() - 64, 0))
+  const minSidebarWidth = 244
+  const maxSidebarWidth = 300
+  const side = createMemo(() => Math.min(Math.max(layout.sidebar.width(), minSidebarWidth), maxSidebarWidth))
 
   const loadedSessionDirs = new Set<string>()
 
@@ -1853,10 +1886,7 @@ export default function LegacyLayout(props: ParentProps) {
 
     setBusy(created.directory, true)
     WorktreeState.pending(serverSDK().scope, created.directory)
-    setStore("workspaceExpanded", key, true)
-    if (key !== created.directory) {
-      setStore("workspaceExpanded", created.directory, true)
-    }
+    setWorkspaceExpanded(created.directory, true)
     setStore("workspaceOrder", project.worktree, (prev) => {
       const existing = prev ?? []
       const next = existing.filter((item) => {
@@ -1877,6 +1907,7 @@ export default function LegacyLayout(props: ParentProps) {
     sidebarHovering,
     clearHoverProjectSoon,
     prefetchSession,
+    renameSession,
     archiveSession,
     workspaceName,
     renameWorkspace,
@@ -1886,8 +1917,8 @@ export default function LegacyLayout(props: ParentProps) {
     setEditor,
     InlineEditor,
     isBusy,
-    workspaceExpanded: (directory, local) => store.workspaceExpanded[directory] ?? local,
-    setWorkspaceExpanded: (directory, value) => setStore("workspaceExpanded", directory, value),
+    workspaceExpanded,
+    setWorkspaceExpanded,
     showResetWorkspaceDialog: (root, directory) =>
       dialog.show(() => <DialogResetWorkspace root={root} directory={directory} />),
     showDeleteWorkspaceDialog: (root, directory) =>
@@ -1911,6 +1942,7 @@ export default function LegacyLayout(props: ParentProps) {
       setState("hoverProject", hoverOpen ? worktree : undefined)
     },
     navigateToProject,
+    navigateToNewSession: (directory) => navigateWithSidebarReset(`/${base64Encode(directory)}/session`),
     openSidebar: () => layout.sidebar.open(),
     closeProject,
     showEditProjectDialog: (proj) => showEditProjectDialog(server.current!, proj),
@@ -1918,13 +1950,18 @@ export default function LegacyLayout(props: ParentProps) {
     workspacesEnabled: (project) => project.vcs === "git" && layout.sidebar.workspaces(project.worktree)(),
     workspaceIds,
     workspaceLabel,
+    projectSessionsExpanded: (directory) => projectSessionsExpanded(store.projectSessionsCollapsed, directory),
+    setProjectSessionsExpanded: (directory, value) =>
+      setStore("projectSessionsCollapsed", sidebarStateKey(directory), !value),
     sessionProps: {
       navList: currentSessions,
       sidebarExpanded,
       clearHoverProjectSoon,
       prefetchSession,
+      renameSession,
       archiveSession,
     },
+    workspaceCtx: workspaceSidebarCtx,
   }
 
   const SidebarPanel = (panelProps: {
@@ -1985,7 +2022,7 @@ export default function LegacyLayout(props: ParentProps) {
           "max-w-full overflow-hidden": panelProps.mobile,
         }}
         style={{
-          width: panelProps.mobile ? undefined : `${panel()}px`,
+          width: panelProps.mobile ? undefined : `${side()}px`,
         }}
       >
         <Show
@@ -2298,31 +2335,29 @@ export default function LegacyLayout(props: ParentProps) {
               <div class="@container w-full h-full contain-strict">{sidebarContent()}</div>
             </nav>
 
-            <Show when={layout.sidebar.opened()}>
-              <div
-                class="hidden xl:block absolute inset-y-0 z-30 w-0 overflow-visible"
-                style={{ "inset-inline-start": `${side()}px` }}
-                onPointerDown={() => setState("sizing", true)}
-              >
-                <ResizeHandle
-                  direction="horizontal"
-                  size={layout.sidebar.width()}
-                  min={244}
-                  max={typeof window === "undefined" ? 1000 : window.innerWidth * 0.3 + 64}
-                  onResize={(w) => {
-                    setState("sizing", true)
-                    if (sizet !== undefined) clearTimeout(sizet)
-                    sizet = window.setTimeout(() => setState("sizing", false), 120)
-                    layout.sidebar.resize(w)
-                  }}
-                />
-              </div>
-            </Show>
-
             <div
               class="hidden xl:block pointer-events-none absolute top-0 end-0 z-0 border-t border-border-weaker-base"
-              style={{ "inset-inline-start": "calc(4rem + 12px)" }}
+              style={{ "inset-inline-start": `${side()}px` }}
             />
+
+            <div
+              class="hidden xl:block absolute inset-y-0 z-30 w-0 overflow-visible"
+              style={{ "inset-inline-start": `${side()}px` }}
+              onPointerDown={() => setState("sizing", true)}
+            >
+              <ResizeHandle
+                direction="horizontal"
+                size={side()}
+                min={minSidebarWidth}
+                max={maxSidebarWidth}
+                onResize={(width) => {
+                  setState("sizing", true)
+                  if (sizet !== undefined) clearTimeout(sizet)
+                  sizet = window.setTimeout(() => setState("sizing", false), 120)
+                  layout.sidebar.resize(width)
+                }}
+              />
+            </div>
 
             <div class="xl:hidden">
               <div
@@ -2358,7 +2393,7 @@ export default function LegacyLayout(props: ParentProps) {
                   !state.sizing,
               }}
               style={{
-                "--main-left": layout.sidebar.opened() ? `${side()}px` : "4rem",
+                "--main-left": `${side()}px`,
               }}
             >
               <main
@@ -2372,44 +2407,6 @@ export default function LegacyLayout(props: ParentProps) {
               </main>
             </div>
 
-            <div
-              classList={{
-                "hidden xl:flex absolute inset-y-0 start-16 z-30": true,
-                "opacity-100 translate-x-0 pointer-events-auto": state.peeked && !layout.sidebar.opened(),
-                "opacity-0 ltr:-translate-x-2 rtl:translate-x-2 pointer-events-none":
-                  !state.peeked || layout.sidebar.opened(),
-                "transition-[opacity,transform] motion-reduce:transition-none": true,
-                "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
-                "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
-              }}
-              onMouseMove={disarm}
-              onMouseEnter={() => {
-                disarm()
-                aim.reset()
-              }}
-              onPointerDown={disarm}
-              onMouseLeave={() => {
-                arm()
-              }}
-            >
-              <Show when={peekProject()}>
-                <SidebarPanel project={peekProject} merged={false} />
-              </Show>
-            </div>
-
-            <div
-              classList={{
-                "hidden xl:block pointer-events-none absolute inset-y-0 end-0 z-25 overflow-hidden": true,
-                "opacity-100 translate-x-0": state.peeked && !layout.sidebar.opened(),
-                "opacity-0 ltr:-translate-x-2 rtl:translate-x-2": !state.peeked || layout.sidebar.opened(),
-                "transition-[opacity,transform] motion-reduce:transition-none": true,
-                "duration-180 ease-out": state.peeked && !layout.sidebar.opened(),
-                "duration-120 ease-in": !state.peeked || layout.sidebar.opened(),
-              }}
-              style={{ "inset-inline-start": `calc(4rem + ${panel()}px)` }}
-            >
-              <div class="h-full w-px" style={{ "box-shadow": "var(--shadow-sidebar-overlay)" }} />
-            </div>
           </div>
         </div>
         {import.meta.env.DEV && import.meta.env.VITE_DISABLE_DEBUG_BAR !== "1" && state.debugTools && <DebugBar />}

@@ -26,6 +26,7 @@ import { useServerSDK } from "./server-sdk"
 import { SessionRouteKey, SessionStateKey } from "@/utils/server-scope"
 import { createFileTreeStore } from "./file/tree-store"
 import { invalidateFromWatcher } from "./file/watcher"
+import { createFileLineRevealController } from "./file/line-reveal"
 import {
   selectionFromLines,
   type FileState,
@@ -70,6 +71,10 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     )
 
     const inflight = new Map<string, Promise<void>>()
+    const lineReveal = createFileLineRevealController({
+      requestFrame: (callback) => requestAnimationFrame(callback),
+      cancelFrame: (id) => cancelAnimationFrame(id),
+    })
     const [store, setStore] = createStore<{
       file: Record<string, FileState>
     }>({
@@ -109,6 +114,7 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     createEffect(() => {
       scope()
       inflight.clear()
+      lineReveal.dispose()
       resetFileContentLru()
       batch(() => {
         setStore("file", reconcile({}))
@@ -261,9 +267,15 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const setScrollLeft = (input: string, left: number) => withPath(input, (file) => view().setScrollLeft(file, left))
     const setSelectedLines = (input: string, range: SelectedLineRange | null) =>
       withPath(input, (file) => view().setSelectedLines(file, range))
+    const revealLine = (input: string, line: number) => withPath(input, (file) => lineReveal.request(file, line))
+    const registerLineRevealer = (input: string, reveal: (line: number) => boolean) =>
+      lineReveal.register(path.normalize(input), reveal)
+    const deactivateLineReveal = (input: string) => withPath(input, (file) => lineReveal.deactivate(file))
+    const lineRevealRestoreQueued = (input: string) => withPath(input, (file) => lineReveal.restoreQueued(file))
 
     onCleanup(() => {
       stop()
+      lineReveal.dispose()
       viewCache.clear()
     })
 
@@ -295,6 +307,11 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
       setScrollLeft,
       selectedLines,
       setSelectedLines,
+      revealLine,
+      registerLineRevealer,
+      deactivateLineReveal,
+      lineRevealRestoreQueued,
+      cancelLineReveal: lineReveal.cancel,
       searchFiles: (query: string, options?: { limit?: number; signal?: AbortSignal }) =>
         search(query, "false", options),
       searchFilesAndDirectories: (query: string) => search(query, "true"),

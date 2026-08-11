@@ -1,11 +1,48 @@
 import { expect, test } from "bun:test"
-import { createMarkdownParser } from "./marked-parser"
+import { createMarkdownParser, parseMarkdownWithProvenance } from "./marked-parser"
 
 const parser = createMarkdownParser((code, language) => `<pre data-language="${language}">${code}</pre>`)
 
 test("renders links with application attributes", async () => {
   expect(await parser.parse("[OpenCode](https://opencode.ai)")).toBe(
-    '<p><a href="https://opencode.ai" class="external-link" target="_blank" rel="noopener noreferrer">OpenCode</a></p>\n',
+    '<p><a href="https://opencode.ai" data-markdown-href="https://opencode.ai" class="external-link" target="_blank" rel="noopener noreferrer">OpenCode</a></p>\n',
+  )
+})
+
+test("preserves local link targets as inert metadata", async () => {
+  const html = await parser.parse("[file](<C:/Users/l/My Project/应用.tsx:12>)")
+  expect(html).toContain('data-markdown-href="C:/Users/l/My Project/应用.tsx:12"')
+})
+
+test("marks parser-rendered links with an unpredictable per-parse capability", async () => {
+  const forged = "attacker-supplied-capability"
+  const result = await parseMarkdownWithProvenance(
+    parser,
+    `[file](src/app.ts)\n\n<a href="https://example.com" data-markdown-href="C:/secret.ts:9" data-markdown-capability="${forged}">forged</a>`,
+  )
+
+  expect(result.linkCapability).not.toBe(forged)
+  expect(result.html).toContain(`data-markdown-capability="${result.linkCapability}"`)
+  expect(result.html).toContain(`data-markdown-capability="${forged}"`)
+})
+
+test("escapes literal quotes in link destinations and titles", async () => {
+  const html = await parser.parse(`[file](<src/a" onclick="alert(1).ts> 'say "hello"')`)
+  expect(html).not.toContain(' onclick="')
+  expect(html).toContain('href="src/a&quot; onclick=&quot;alert(1).ts"')
+  expect(html).toContain('data-markdown-href="src/a&quot; onclick=&quot;alert(1).ts"')
+  expect(html).toContain('title="say &quot;hello&quot;"')
+})
+
+test("preserves entity-encoded HTTPS link attributes", async () => {
+  expect(await parser.parse('[OpenCode](<https://opencode.ai/search?q=a&amp;b=c> "A &quot;title&quot;")')).toContain(
+    'href="https://opencode.ai/search?q=a&amp;b=c" data-markdown-href="https://opencode.ai/search?q=a&amp;b=c" title="A &quot;title&quot;"',
+  )
+})
+
+test("preserves entity-encoded mailto link attributes", async () => {
+  expect(await parser.parse("[email](<mailto:test@example.com?subject=A&amp;body=B>)")).toContain(
+    'href="mailto:test@example.com?subject=A&amp;body=B" data-markdown-href="mailto:test@example.com?subject=A&amp;body=B"',
   )
 })
 

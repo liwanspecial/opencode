@@ -44,6 +44,45 @@ test("restores review mode and selected file per session", async ({ page }) => {
   await expectSelectedFile(page, "gamma.ts")
 })
 
+test("closes review when dragged to zero width and reopens at the default width", async ({ page }) => {
+  await setup(page)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto(sessionHref(sessionA))
+  await expectSessionTitle(page, titleA)
+  await page.getByRole("button", { name: "Toggle review" }).click()
+
+  const panel = page.locator("#review-panel")
+  await expect(panel).toBeVisible()
+  const box = await panel.boundingBox()
+  if (!box) throw new Error("Review panel is not visible")
+  const initialDividerX = Math.round(box.x)
+
+  await page.mouse.move(box.x - 4, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 156, box.y + box.height / 2)
+  await page.mouse.up()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? -1)).toBeGreaterThan(initialDividerX + 100)
+
+  const resized = await panel.boundingBox()
+  if (!resized) throw new Error("Resized review panel is not visible")
+  await page.mouse.move(resized.x - 4, resized.y + resized.height / 2)
+  await page.mouse.down()
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error("Viewport size is unavailable")
+  await page.mouse.move(viewport.width - 1, resized.y + resized.height / 2)
+  await page.mouse.move(viewport.width - 2, resized.y + resized.height / 2)
+  await page.mouse.up()
+
+  await expect(panel).toHaveCount(0)
+  await page.getByRole("button", { name: "Toggle review" }).click()
+  await expect(panel).toBeVisible()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? -1)).toBe(initialDividerX)
+  await page.reload()
+  await expectSessionTitle(page, titleA)
+  await expect(panel).toBeVisible()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? -1)).toBe(initialDividerX)
+})
+
 async function selectMode(page: Page, current: string, next: string) {
   await page.getByRole("button", { name: current }).click()
   await page.getByRole("option", { name: next }).dispatchEvent("click")

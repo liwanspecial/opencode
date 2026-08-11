@@ -8,6 +8,7 @@ import {
   createResource,
   createSignal,
   createUniqueId,
+  Show,
   onCleanup,
   type Setter,
   splitProps,
@@ -31,10 +32,22 @@ import {
 import { markdownBlockKey, type MarkdownToken } from "./markdown-worker-protocol"
 import { shouldResetCodeTokens, type RenderedCodeState } from "./markdown-code-state"
 import { getCachedMarkdown, sanitizeMarkdown, touchCachedMarkdown, type MarkdownCacheEntry } from "./markdown-cache"
+import {
+  parseMarkdownFileReference,
+  type MarkdownFileOpenHandler,
+  type MarkdownFileReference,
+} from "./markdown-file-reference"
 import { inlineCodeKind } from "./markdown-inline-code-kind"
+import { isMermaidBlock } from "./markdown-mermaid"
+
+export type { MarkdownFileOpenHandler, MarkdownFileReference } from "./markdown-file-reference"
 
 type RenderedBlock =
-  | (MarkdownCacheEntry & { key: string; mode: Exclude<Block["mode"], "code"> })
+  | (Omit<MarkdownCacheEntry, "linkCapability"> & {
+      key: string
+      mode: Exclude<Block["mode"], "code">
+      linkCapability?: string
+    })
   | {
       key: string
       mode: "code"
@@ -53,6 +66,9 @@ type RenderResult = {
 }
 
 const renderedCodeTokens = new WeakMap<HTMLDivElement, RenderedCodeState>()
+const mermaidBlockState = new WeakMap<HTMLElement, () => void>()
+const markdownFileReferences = new WeakMap<HTMLElement, MarkdownFileReference>()
+let mermaidCounter = 0
 
 function escape(text: string) {
   return text
@@ -176,6 +192,122 @@ function disposeCopyButtons(root: Element) {
   hosts.forEach(disposeCopyButton)
 }
 
+function createMermaidBlock(source: string) {
+  const host = document.createElement("div")
+  host.setAttribute("data-slot", "markdown-mermaid-block")
+  mermaidBlockState.set(
+    host,
+    render(() => <MarkdownMermaidBlock source={source} />, host),
+  )
+  return host
+}
+
+function disposeMermaidBlock(host: HTMLElement) {
+  mermaidBlockState.get(host)?.()
+  mermaidBlockState.delete(host)
+}
+
+function disposeMermaidBlocks(root: Element) {
+  const hosts = [
+    ...(root instanceof HTMLElement && root.getAttribute("data-slot") === "markdown-mermaid-block" ? [root] : []),
+    ...Array.from(root.querySelectorAll('[data-slot="markdown-mermaid-block"]')).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement,
+    ),
+  ]
+  hosts.forEach(disposeMermaidBlock)
+}
+
+function disposeMarkdownEnhancements(root: Element) {
+  disposeCopyButtons(root)
+  disposeMermaidBlocks(root)
+}
+
+function MarkdownMermaidBlock(props: { source: string }) {
+  const [mode, setMode] = createSignal<"diagram" | "code">("diagram")
+  const scales = [0.5, 0.75, 1, 1.25, 1.5]
+  const [scaleIndex, setScaleIndex] = createSignal(1)
+  const scale = () => scales[scaleIndex()] ?? 0.75
+  const [svg, setSvg] = createSignal("")
+  const [error, setError] = createSignal<string>()
+
+  createEffect(() => {
+    const source = props.source
+    const id = `opencode-mermaid-${++mermaidCounter}`
+    setSvg("")
+    setError(undefined)
+    void (async () => {
+      try {
+        const mermaid = await import("mermaid")
+        mermaid.default.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" })
+        const rendered = await mermaid.default.render(id, source)
+        setSvg(rendered.svg)
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error))
+      }
+    })()
+  })
+
+  return (
+    <div data-component="markdown-mermaid" data-mode={mode()}>
+      <div data-slot="markdown-mermaid-toolbar">
+        <Show
+          when={mode() === "diagram"}
+          fallback={
+            <button type="button" data-slot="markdown-mermaid-button" onClick={() => setMode("diagram")}>
+              Diagram
+            </button>
+          }
+        >
+          <button
+            type="button"
+            data-slot="markdown-mermaid-button"
+            disabled={scaleIndex() === 0}
+            onClick={() => setScaleIndex((current) => Math.max(0, current - 1))}
+          >
+            -
+          </button>
+          <span data-slot="markdown-mermaid-scale">{Math.round(scale() * 100)}%</span>
+          <button
+            type="button"
+            data-slot="markdown-mermaid-button"
+            disabled={scaleIndex() === scales.length - 1}
+            onClick={() => setScaleIndex((current) => Math.min(scales.length - 1, current + 1))}
+          >
+            +
+          </button>
+          <button type="button" data-slot="markdown-mermaid-button" onClick={() => setMode("code")}>
+            Code
+          </button>
+        </Show>
+      </div>
+      <Show
+        when={mode() === "diagram"}
+        fallback={
+          <pre class="shiki OpenCode">
+            <code class="language-mermaid">{props.source}</code>
+          </pre>
+        }
+      >
+        <Show
+          when={!error()}
+          fallback={
+            <div data-slot="markdown-mermaid-error">
+              <div>Unable to render Mermaid diagram.</div>
+              <div>{error()}</div>
+            </div>
+          }
+        >
+          <div
+            data-slot="markdown-mermaid-diagram"
+            style={{ "--markdown-mermaid-scale": String(scale()) }}
+            innerHTML={svg()}
+          />
+        </Show>
+      </Show>
+    </div>
+  )
+}
+
 const shellLanguages = new Set(["bash", "sh", "shell", "zsh", "fish", "console", "terminal"])
 
 function codeKind(language: string | undefined) {
@@ -208,18 +340,28 @@ function applyCodeMetadata(wrapper: HTMLElement, language: string | undefined) {
 function ensureCodeWrapper(block: HTMLPreElement, labels: CopyLabels) {
   const parent = block.parentElement
   if (!parent) return
+  const language = codeLanguage(block)
+  const source = block.querySelector("code")?.textContent ?? ""
+  if (isMermaidBlock(language, source)) {
+    const wrapper = document.createElement("div")
+    wrapper.setAttribute("data-component", "markdown-code")
+    wrapper.dataset.language = "mermaid"
+    parent.replaceChild(wrapper, block)
+    wrapper.appendChild(createMermaidBlock(source))
+    return
+  }
   const wrapped = parent.getAttribute("data-component") === "markdown-code"
   if (!wrapped) {
     const wrapper = document.createElement("div")
     wrapper.setAttribute("data-component", "markdown-code")
-    applyCodeMetadata(wrapper, codeLanguage(block))
+    applyCodeMetadata(wrapper, language)
     parent.replaceChild(wrapper, block)
     wrapper.appendChild(block)
     wrapper.appendChild(createCopyButton(labels))
     return
   }
 
-  applyCodeMetadata(parent, codeLanguage(block))
+  applyCodeMetadata(parent, language)
 
   const buttons = Array.from(parent.querySelectorAll('[data-slot="markdown-copy-button"]')).filter(
     (el): el is HTMLButtonElement => el instanceof HTMLButtonElement,
@@ -239,6 +381,7 @@ function ensureCodeWrapper(block: HTMLPreElement, labels: CopyLabels) {
 function markCodeLinks(root: HTMLDivElement) {
   const codeNodes = Array.from(root.querySelectorAll(":not(pre) > code"))
   for (const code of codeNodes) {
+    if (code.closest("a[data-file-path]")) continue
     const href = codeUrl(code.textContent ?? "")
     const parentLink =
       code.parentElement instanceof HTMLAnchorElement && code.parentElement.classList.contains("external-link")
@@ -275,14 +418,74 @@ function markInlineCode(root: HTMLDivElement) {
   }
 }
 
-function decorate(root: HTMLDivElement, labels: CopyLabels) {
+export function decorateMarkdownFileReferences(
+  root: HTMLDivElement,
+  onFileOpen: MarkdownFileOpenHandler | undefined,
+  linkCapability?: string,
+) {
+  if (!onFileOpen) return
+
+  root.querySelectorAll<HTMLElement>("[data-file-path]").forEach((target) => markdownFileReferences.delete(target))
+  root.querySelectorAll<HTMLAnchorElement>("a[data-markdown-href]").forEach((anchor) => {
+    if (!linkCapability || anchor.dataset.markdownCapability !== linkCapability) return
+    const reference = parseMarkdownFileReference(anchor.dataset.markdownHref ?? "", "link")
+    if (!reference) return
+    markFileReference(anchor, reference)
+    anchor.setAttribute("href", "#")
+    anchor.classList.remove("external-link")
+    anchor.classList.add("file-link")
+    anchor.removeAttribute("target")
+    anchor.removeAttribute("rel")
+  })
+
+  root.querySelectorAll<HTMLElement>(":not(pre) > code").forEach((code) => {
+    if (code.closest("a")) return
+    const reference = parseMarkdownFileReference(code.textContent ?? "", "inline")
+    if (reference) markFileReference(code, reference)
+  })
+}
+
+function markFileReference(target: HTMLElement, reference: MarkdownFileReference) {
+  markdownFileReferences.set(target, reference)
+  target.dataset.filePath = reference.path
+  if (reference.line !== undefined) target.dataset.fileLine = String(reference.line)
+  else delete target.dataset.fileLine
+}
+
+export function decorateMarkdown(
+  root: HTMLDivElement,
+  labels: CopyLabels,
+  onFileOpen: MarkdownFileOpenHandler | undefined,
+  linkCapability?: string,
+) {
   const blocks = Array.from(root.querySelectorAll("pre"))
   for (const block of blocks) {
     ensureCodeWrapper(block, labels)
   }
-  if (!document.body.hasAttribute("data-new-layout")) return
-  markInlineCode(root)
+  const newLayout = document.body.hasAttribute("data-new-layout")
+  if (newLayout) markInlineCode(root)
+  decorateMarkdownFileReferences(root, onFileOpen, linkCapability)
+  if (!newLayout) return
   markCodeLinks(root)
+}
+
+export function setupMarkdownFileClicks(
+  root: HTMLDivElement,
+  getOnFileOpen: () => MarkdownFileOpenHandler | undefined,
+) {
+  const handleClick = (event: MouseEvent) => {
+    if (!(event.target instanceof Element)) return
+    const target = event.target.closest<HTMLElement>("[data-file-path]")
+    if (!target) return
+    const reference = markdownFileReferences.get(target)
+    if (!reference) return
+    event.preventDefault()
+    event.stopPropagation()
+    getOnFileOpen()?.(reference)
+  }
+
+  root.addEventListener("click", handleClick)
+  return () => root.removeEventListener("click", handleClick)
 }
 
 function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
@@ -326,7 +529,7 @@ function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
     for (const timeout of timeouts.values()) {
       clearTimeout(timeout)
     }
-    disposeCopyButtons(root)
+    disposeMarkdownEnhancements(root)
   }
 }
 
@@ -368,9 +571,10 @@ export function Markdown(
     streaming?: boolean
     class?: string
     classList?: Record<string, boolean>
+    onFileOpen?: MarkdownFileOpenHandler
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "streaming", "class", "classList"])
+  const [local, others] = splitProps(props, ["text", "cacheKey", "streaming", "class", "classList", "onFileOpen"])
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
   const owner = createUniqueId()
@@ -411,7 +615,7 @@ export function Markdown(
         projection: value,
       }
     },
-    async (src) => {
+    async (src): Promise<RenderResult> => {
       if (isServer)
         return {
           text: src.text,
@@ -458,9 +662,23 @@ export function Markdown(
           }
 
           const hash = checksum(block.raw)
-          const safe = sanitizeMarkdown(await parseMarkdown(block.src))
-          if (key && hash) touchCachedMarkdown(key, { raw: block.raw, hash, html: safe })
-          return { key: blockKey, mode: block.mode, raw: block.raw, hash: hash ?? "", html: safe }
+          const parsed = await parseMarkdown(block.src)
+          const safe = sanitizeMarkdown(parsed.html)
+          if (key && hash)
+            touchCachedMarkdown(key, {
+              raw: block.raw,
+              hash,
+              html: safe,
+              linkCapability: parsed.linkCapability,
+            })
+          return {
+            key: blockKey,
+            mode: block.mode,
+            raw: block.raw,
+            hash: hash ?? "",
+            html: safe,
+            linkCapability: parsed.linkCapability,
+          }
         }),
       )
         .then((blocks) => ({ text: src.text, blocks }) satisfies RenderResult)
@@ -491,6 +709,7 @@ export function Markdown(
   )
 
   let copyCleanup: (() => void) | undefined
+  let fileCleanup: (() => void) | undefined
 
   createEffect(() => {
     const container = root()
@@ -500,7 +719,7 @@ export function Markdown(
     if (!container) return
     if (isServer) return
     if (content.length === 0) {
-      disposeCopyButtons(container)
+      disposeMarkdownEnhancements(container)
       container.innerHTML = ""
       return
     }
@@ -515,11 +734,11 @@ export function Markdown(
     })
     activeCodeKeys.clear()
     nextCodeKeys.forEach((key) => activeCodeKeys.add(key))
-    content.forEach((block, index) => updateBlock(container, index, block, labels))
+    content.forEach((block, index) => updateBlock(container, index, block, labels, local.onFileOpen))
     while (container.children.length > content.length) {
       const child = container.lastElementChild
       if (!child) break
-      disposeCopyButtons(child)
+      disposeMarkdownEnhancements(child)
       child.remove()
     }
     container
@@ -530,10 +749,14 @@ export function Markdown(
         copy: i18n.t("ui.message.copy"),
         copied: i18n.t("ui.message.copied"),
       }))
+    if (!fileCleanup) fileCleanup = setupMarkdownFileClicks(container, () => local.onFileOpen)
   })
 
   onCleanup(() => {
     if (copyCleanup) copyCleanup()
+    if (fileCleanup) fileCleanup()
+    const container = root()
+    if (container) disposeMermaidBlocks(container)
     disposeMarkdownProjection(owner)
     activeCodeKeys.forEach(disposeCode)
     completedCode.clear()
@@ -586,7 +809,13 @@ function disposeCode(key: string) {
   disposeStreamingCode(key)
 }
 
-function updateBlock(container: HTMLDivElement, index: number, block: RenderedBlock, labels: CopyLabels) {
+function updateBlock(
+  container: HTMLDivElement,
+  index: number,
+  block: RenderedBlock,
+  labels: CopyLabels,
+  onFileOpen: MarkdownFileOpenHandler | undefined,
+) {
   const current = container.children[index]
   if (block.mode === "code") {
     updateCodeBlock(container, current, block, labels)
@@ -605,7 +834,7 @@ function updateBlock(container: HTMLDivElement, index: number, block: RenderedBl
   next.dataset.markdownHash = block.hash
   next.style.display = "contents"
   next.innerHTML = block.html
-  decorate(next, labels)
+  decorateMarkdown(next, labels, onFileOpen, block.linkCapability)
 
   if (!(current instanceof HTMLDivElement)) {
     container.appendChild(next)
@@ -626,10 +855,11 @@ function updateBlock(container: HTMLDivElement, index: number, block: RenderedBl
       return true
     },
     onBeforeNodeDiscarded: (node) => {
-      if (node instanceof Element) disposeCopyButtons(node)
+      if (node instanceof Element) disposeMarkdownEnhancements(node)
       return true
     },
   })
+  decorateMarkdownFileReferences(current, onFileOpen, block.linkCapability)
 }
 
 function updateCodeBlock(
@@ -645,6 +875,24 @@ function updateCodeBlock(
   next.dataset.markdownHash = block.hash
   next.dataset.markdownComplete = block.complete ? "true" : "false"
   next.style.display = "contents"
+
+  const source = block.stable
+    .concat(block.unstable)
+    .map((token) => token[0])
+    .join("")
+  if (isMermaidBlock(block.language, source)) {
+    if (existing?.dataset.markdownHash === block.hash && existing.querySelector('[data-slot="markdown-mermaid-block"]'))
+      return
+    disposeMarkdownEnhancements(next)
+    next.replaceChildren(createMermaidBlock(source))
+    if (current && current !== next) {
+      disposeMarkdownEnhancements(current)
+      current.replaceWith(next)
+      return
+    }
+    if (!current) container.appendChild(next)
+    return
+  }
 
   const code = existing?.querySelector("code")
   if (code instanceof HTMLElement) {

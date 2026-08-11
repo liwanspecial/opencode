@@ -1,6 +1,7 @@
 import { batch, createMemo, onCleanup, onMount, type Accessor } from "solid-js"
 import { createStore } from "solid-js/store"
 import { makeEventListener } from "@solid-primitives/event-listener"
+import type { MarkdownFileOpenHandler, MarkdownFileReference } from "@opencode-ai/session-ui/markdown"
 import { same } from "@/utils/same"
 import { SESSION_OPEN_FILE_TAB } from "@/context/layout-tabs"
 
@@ -135,6 +136,30 @@ export const createOpenReviewFile = (input: {
       if (maybePromise instanceof Promise) void maybePromise.then(open)
       else open()
     })
+  }
+}
+
+export const createOpenAssistantFile = (input: {
+  normalizePath: (path: string) => string
+  tabForPath: (path: string) => string
+  loadFile: (path: string) => unknown
+  openTab: (tab: string) => unknown
+  setActive: (tab: string) => void
+  setSelectedLines: (path: string, range: { start: number; end: number } | null) => unknown
+  revealLine: (path: string, line: number) => unknown
+  cancelLineReveal: () => unknown
+  openFilePanel: () => void
+}): MarkdownFileOpenHandler => {
+  return (reference: MarkdownFileReference) => {
+    const path = input.normalizePath(reference.path)
+    const tab = input.tabForPath(path)
+    input.cancelLineReveal()
+    input.setSelectedLines(path, reference.line === undefined ? null : { start: reference.line, end: reference.line })
+    input.openTab(tab)
+    input.loadFile(path)
+    input.openFilePanel()
+    input.setActive(tab)
+    if (reference.line !== undefined) input.revealLine(path, reference.line)
   }
 }
 

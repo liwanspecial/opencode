@@ -419,6 +419,16 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
     )
   }
 
+  const rename = () => {
+    const sessionID = params.id
+    if (!sessionID) return
+    const session = info()
+    if (!session) return
+    void import("@/components/dialog-rename-session").then((x) => {
+      dialog.show(() => <x.DialogRenameSession sessionID={sessionID} title={session.title} directory={sdk().directory} />)
+    })
+  }
+
   const shareCmds = () => {
     if (sync().data.config.share === "disabled") return []
     return [
@@ -456,6 +466,14 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
         }
         navigate(`/${params.dir}/session`)
       },
+    }),
+    sessionCommand({
+      id: "session.rename",
+      title: language.t("command.session.rename"),
+      description: language.t("command.session.rename.description"),
+      slash: "rename",
+      disabled: !params.id || !!info()?.parentID,
+      onSelect: rename,
     }),
     sessionCommand({
       id: "session.undo",

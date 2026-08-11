@@ -83,6 +83,10 @@ type Domain = { name: string; source: string; target: string; drift: Drift }
 const desktopLocales = new Set<Locale>(locales)
 const root = path.resolve(import.meta.dir, "..")
 
+export function opencodeCommand(repo: string, args: string[]) {
+  return [process.execPath, "run", "--conditions=browser", path.join(repo, "packages/opencode/src/index.ts"), ...args]
+}
+
 export function parseTranslationArgs(args: string[]) {
   const parsed = parseArgs({
     args,
@@ -426,8 +430,7 @@ async function translate(
   )
 
   const proc = Bun.spawn(
-    [
-      "opencode",
+    opencodeCommand(root, [
       "--pure",
       "run",
       "--dir",
@@ -442,7 +445,7 @@ async function translate(
       `Translate app ${plan.locale}`,
       "--format",
       "json",
-    ],
+    ]),
     {
       cwd: root,
       env,
@@ -459,7 +462,7 @@ async function translate(
   if (result[2] !== 0) return { locale: plan.locale, stdout: result[0], stderr: result[1], code: result[2] }
 
   const sessionID = sessionIDFromEvents(result[0])
-  const exported = Bun.spawn(["opencode", "--pure", "export", sessionID, "--sanitize"], {
+  const exported = Bun.spawn(opencodeCommand(root, ["--pure", "export", sessionID, "--sanitize"]), {
     cwd: root,
     env,
     stdout: "pipe",
@@ -531,7 +534,7 @@ async function resolveModelVariant(model: string, variant: string) {
   if (!provider || !model.includes("/")) throw new Error(`Model must use provider/model syntax: ${model}`)
   const env = isolatedEnvironment()
   env.OPENCODE_DISABLE_PROJECT_CONFIG = "1"
-  const proc = Bun.spawn(["opencode", "--pure", "models", provider, "--verbose"], {
+  const proc = Bun.spawn(opencodeCommand(root, ["--pure", "models", provider, "--verbose"]), {
     cwd: root,
     env,
     stdin: "ignore",

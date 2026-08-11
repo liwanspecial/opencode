@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 import { ShikiStreamTokenizer } from "@shikijs/stream"
-import { createMarkdownParser } from "@opencode-ai/ui/context/marked-parser"
+import { createMarkdownParser, parseMarkdownWithProvenance } from "@opencode-ai/ui/context/marked-parser"
 import { OpenCodeTheme } from "@opencode-ai/ui/context/marked-theme"
 import {
   bundledLanguages,
@@ -62,7 +62,7 @@ self.onmessage = (event: MessageEvent<MarkdownWorkerRequest>) => {
 
 async function parse(request: Extract<MarkdownWorkerRequest, { type: "parse" }>) {
   try {
-    post({ type: "parse", id: request.id, html: await parser.parse(request.text) })
+    post({ type: "parse", id: request.id, ...(await parseMarkdownWithProvenance(parser, request.text)) })
   } catch (error) {
     post({ type: "error", id: request.id, message: error instanceof Error ? error.message : String(error) })
   }

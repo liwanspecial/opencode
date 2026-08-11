@@ -49,6 +49,27 @@ export const childSessionOnPath = (sessions: Session[] | undefined, rootID: stri
 export const displayName = (project: { name?: string; worktree: string }) =>
   project.name || getFilename(project.worktree) || project.worktree
 
+export const sidebarStateKey = (directory: string) => {
+  const key = pathKey(directory)
+  if (/^[a-z]:\//i.test(key) || key.startsWith("//")) return key.toLowerCase()
+  return key
+}
+
+export const projectSessionsExpanded = (collapsed: Record<string, boolean>, directory: string) =>
+  collapsed[sidebarStateKey(directory)] !== true
+
+export const workspaceExpansionState = (expanded: Record<string, boolean>, directory: string, local: boolean) => {
+  const key = sidebarStateKey(directory)
+  const equivalent = Object.entries(expanded).filter(([candidate]) => sidebarStateKey(candidate) === key)
+  const value =
+    expanded[directory] ??
+    equivalent.find(([candidate]) => candidate.includes("\\"))?.[1] ??
+    expanded[key] ??
+    expanded[pathKey(directory)] ??
+    equivalent[0]?.[1]
+  return value ?? local
+}
+
 export function toggleHomeProjectSelection(
   current: HomeProjectSelection | undefined,
   server: ServerConnection.Key,

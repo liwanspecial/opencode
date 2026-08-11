@@ -6,6 +6,7 @@ export type MarkdownCacheEntry = {
   raw: string
   hash: string
   html: string
+  linkCapability: string
 }
 
 const max = 200
@@ -61,9 +62,11 @@ export async function preloadMarkdown(text: string, cacheKey: string) {
   }
   const hash = checksum(text)
   if (!hash) return
+  const parsed = await parseMarkdown(text)
   touchCachedMarkdown(key, {
     raw: text,
     hash,
-    html: sanitizeMarkdown(await parseMarkdown(text)),
+    html: sanitizeMarkdown(parsed.html),
+    linkCapability: parsed.linkCapability,
   })
 }

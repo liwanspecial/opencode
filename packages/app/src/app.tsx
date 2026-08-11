@@ -54,6 +54,8 @@ import { usePlatform } from "@/context/platform"
 import { PromptProvider } from "@/context/prompt"
 import { ServerConnection, ServerProvider, serverName, useServer } from "@/context/server"
 import { SettingsProvider, useSettings } from "@/context/settings"
+import { backgroundStyle } from "@/context/background"
+import { TerminalProvider } from "@/context/terminal"
 import { TabsProvider, useTabs, type DraftTab } from "@/context/tabs"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { WslServersProvider } from "@/wsl/context"
@@ -308,12 +310,36 @@ function BodyDesignClass() {
   return null
 }
 
+function AppBackground() {
+  const settings = useSettings()
+  const platform = usePlatform()
+  const style = createMemo(() =>
+    backgroundStyle(
+      {
+        enabled: settings.appearance.backgroundEnabled(),
+        image: settings.appearance.backgroundImage(),
+        opacity: settings.appearance.backgroundOpacity(),
+        blur: settings.appearance.backgroundBlur(),
+        fit: settings.appearance.backgroundFit(),
+      },
+      platform.localFileUrl,
+    ),
+  )
+
+  return (
+    <Show when={settings.appearance.backgroundEnabled() && settings.appearance.backgroundImage()}>
+      <div class="fixed inset-0 pointer-events-none z-[9999] bg-center" style={style()} />
+    </Show>
+  )
+}
+
 // Server-agnostic providers shared across every route. These live in the shared
 // shell (router root) so they stay mounted regardless of the active server/route.
 function SharedProviders(props: ParentProps) {
   return (
     <>
       <BodyDesignClass />
+      <AppBackground />
       <CommandProvider>
         <DesktopCommands />
         <HighlightsProvider>{props.children}</HighlightsProvider>

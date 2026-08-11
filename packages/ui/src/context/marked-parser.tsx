@@ -2,19 +2,40 @@ import katex from "katex"
 import { Marked, type MarkedExtension, type Tokens } from "marked"
 import markedShiki from "marked-shiki"
 
+type ProvenanceLink = Tokens.Link & { markdownLinkCapability?: string }
+
+function escapeAttribute(value: string) {
+  return value.replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
 export function createMarkdownParser(highlight: (code: string, language: string) => string | Promise<string>) {
   return new Marked(
     {
       renderer: {
-        link({ href, title, text }) {
-          const titleAttr = title ? ` title="${title}"` : ""
-          return `<a href="${href}"${titleAttr} class="external-link" target="_blank" rel="noopener noreferrer">${text}</a>`
+        link(token) {
+          const { href, title, text } = token
+          const target = escapeAttribute(href)
+          const titleAttr = title ? ` title="${escapeAttribute(title)}"` : ""
+          const capability = (token as ProvenanceLink).markdownLinkCapability
+          const capabilityAttr = capability ? ` data-markdown-capability="${escapeAttribute(capability)}"` : ""
+          return `<a href="${target}" data-markdown-href="${target}"${capabilityAttr}${titleAttr} class="external-link" target="_blank" rel="noopener noreferrer">${text}</a>`
         },
       },
     },
     katexExtension,
     markedShiki({ highlight }),
   )
+}
+
+export async function parseMarkdownWithProvenance(parser: ReturnType<typeof createMarkdownParser>, markdown: string) {
+  const linkCapability = crypto.randomUUID()
+  const html = await parser.parse(markdown, {
+    walkTokens(token) {
+      if (token.type !== "link") return
+      ;(token as ProvenanceLink).markdownLinkCapability = linkCapability
+    },
+  })
+  return { html, linkCapability }
 }
 
 const inlineMathRegex = /^\\\(((?:\\.|[^\\\n])*?)\\\)/

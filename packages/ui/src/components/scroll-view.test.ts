@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { canScrollKey, scrollKey, scrollTopFromThumbPointer } from "./scroll-view"
+import { canScrollKey, createScrollViewUserInteractions, scrollKey, scrollTopFromThumbPointer } from "./scroll-view"
 
 describe("scrollKey", () => {
   test("maps plain navigation keys", () => {
@@ -36,6 +36,47 @@ describe("canScrollKey", () => {
     expect(canScrollKey(element(50), "page-down")).toBe(true)
     expect(canScrollKey(element(200), "page-down")).toBe(false)
     expect(canScrollKey(element(0, 100, 100), "page-down")).toBe(false)
+  })
+})
+
+describe("createScrollViewUserInteractions", () => {
+  test("reports owned keyboard, native pointer, and custom thumb scrolling", () => {
+    const viewport = {
+      contains: () => false,
+    } as unknown as HTMLDivElement
+    const interactions: string[] = []
+    const user = createScrollViewUserInteractions({
+      viewport: () => viewport,
+      onUserScroll: () => interactions.push("user"),
+    })
+    const keyEvent = (key: string) =>
+      ({
+        key,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        target: null,
+      }) as KeyboardEvent
+
+    expect(user.keyDown(keyEvent("PageDown"))).toBe("page-down")
+    expect(user.keyDown(keyEvent("ArrowDown"))).toBe("down")
+    expect(user.keyDown(keyEvent(" "))).toBe("page-down")
+    user.pointerDown({ target: viewport })
+    user.thumbPointerDown()
+
+    expect(interactions).toEqual(["user", "user", "user", "user", "user"])
+  })
+
+  test("does not expose programmatic scroll as user interaction", () => {
+    const interactions: string[] = []
+    const user = createScrollViewUserInteractions({
+      viewport: () => ({ contains: () => false }) as unknown as HTMLDivElement,
+      onUserScroll: () => interactions.push("user"),
+    })
+
+    expect("scroll" in user).toBe(false)
+    expect(interactions).toEqual([])
   })
 })
 

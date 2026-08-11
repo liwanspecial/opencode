@@ -3,6 +3,7 @@ import {
   applyMarkdownWorkerResponse,
   shouldReleaseMarkdownWorkerState,
   type MarkdownWorkerRequest,
+  type MarkdownParseResult,
   type MarkdownWorkerResponse,
   type MarkdownWorkerState,
 } from "./markdown-worker-protocol"
@@ -23,7 +24,7 @@ type ProjectPending = {
 }
 
 type ParsePending = {
-  resolve: (html: string) => void
+  resolve: (result: MarkdownParseResult) => void
   reject: (error: Error) => void
 }
 
@@ -58,7 +59,7 @@ const projectTransport = createWorkerTransport<Extract<MarkdownWorkerRequest, { 
 export function parseMarkdown(text: string) {
   const instance = getWorker()
   const id = ++nextID
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<MarkdownParseResult>((resolve, reject) => {
     parses.set(id, { resolve, reject })
     instance.postMessage({ type: "parse", id, text } satisfies MarkdownWorkerRequest)
   })
@@ -127,7 +128,7 @@ function getWorker() {
       const result = parses.get(event.data.id)
       if (!result) return
       parses.delete(event.data.id)
-      result.resolve(event.data.html)
+      result.resolve({ html: event.data.html, linkCapability: event.data.linkCapability })
       return
     }
     if (event.data.type === "project") {
