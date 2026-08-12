@@ -1,5 +1,22 @@
 import { describe, expect, test } from "bun:test"
-import { clampSessionPanelWidth, sessionPanelWidthMax } from "./session-panel-width"
+import {
+  clampSessionPanelWidth,
+  REVIEW_PANE_REOPEN_WIDTH,
+  sessionPanelWidthForReview,
+  sessionPanelWidthMax,
+} from "./session-panel-width"
+
+describe("sessionPanelWidthForReview", () => {
+  test("reserves 480px for reopened review", () => {
+    expect(REVIEW_PANE_REOPEN_WIDTH).toBe(480)
+    expect(sessionPanelWidthForReview(1400)).toBe(920)
+  })
+
+  test("keeps the session minimum on smaller rows", () => {
+    expect(sessionPanelWidthForReview(800)).toBe(450)
+    expect(sessionPanelWidthForReview(400)).toBe(450)
+  })
+})
 
 describe("sessionPanelWidthMax", () => {
   test("allows the review pane to reach zero width", () => {

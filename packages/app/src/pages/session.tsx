@@ -85,6 +85,7 @@ import { restorePromptModel, syncPromptModel, syncSessionModel } from "@/pages/s
 import {
   clampSessionPanelWidth,
   SESSION_PANEL_WIDTH_MIN,
+  sessionPanelWidthForReview,
   sessionPanelWidthMax,
 } from "@/pages/session/session-panel-width"
 import { SessionSidePanel } from "@/pages/session/session-side-panel"
@@ -454,6 +455,8 @@ export default function Page() {
   const isDesktop = createMediaQuery("(min-width: 768px)")
   const size = createSizing()
   let reviewDragClosed = false
+  let reviewDragStartWidth: number | undefined
+  let reviewOpenPending = view().reviewPanel.opened()
   const desktopReviewOpen = createMemo(() => isDesktop() && view().reviewPanel.opened())
   const desktopV2ReviewOpen = createMemo(() => newSessionDesign() && desktopReviewOpen() && !!params.id)
   const desktopSessionReviewOpen = createMemo(() => (newSessionDesign() ? desktopV2ReviewOpen() : desktopReviewOpen()))
@@ -487,6 +490,17 @@ export default function Page() {
     if (width === undefined) return undefined
     return width - (settings.general.newLayoutDesigns() ? 8 : 0)
   })
+  createEffect(
+    on([() => view().reviewPanel.opened(), isDesktop, sessionPanelAvailable], ([opened, desktop, available]) => {
+      if (!opened) {
+        reviewOpenPending = true
+        return
+      }
+      if (!desktop || !reviewOpenPending || available === undefined) return
+      layout.session.resize(sessionPanelWidthForReview(available))
+      reviewOpenPending = false
+    }),
+  )
   const sessionPanelMax = createMemo(() => {
     const available = sessionPanelAvailable()
     if (available === undefined) return 1000
@@ -2304,6 +2318,7 @@ export default function Page() {
             <div
               onPointerDown={() => {
                 reviewDragClosed = false
+                reviewDragStartWidth = sessionPanelResizedWidth()
                 size.start()
               }}
             >
@@ -2320,7 +2335,7 @@ export default function Page() {
                   size.touch()
                   if (desktopSessionReviewOpen() && width >= sessionPanelMax()) {
                     reviewDragClosed = true
-                    layout.session.reset()
+                    if (reviewDragStartWidth !== undefined) layout.session.resize(reviewDragStartWidth)
                     view().reviewPanel.close()
                     return
                   }

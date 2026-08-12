@@ -83,6 +83,109 @@ test("closes review when dragged to zero width and reopens at the default width"
   await expect.poll(async () => Math.round((await panel.boundingBox())?.x ?? -1)).toBe(initialDividerX)
 })
 
+test("keeps terminal width when review is dragged closed", async ({ page }) => {
+  await setup(page)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto(sessionHref(sessionA))
+  await expectSessionTitle(page, titleA)
+  await page.getByRole("button", { name: "Toggle review" }).click()
+  await page.keyboard.press("Control+Backquote")
+
+  const review = page.locator("#review-panel")
+  const terminal = page.locator("#terminal-panel")
+  await expect(review).toBeVisible()
+  await expect(terminal).toBeVisible()
+  const reviewBox = await review.boundingBox()
+  const terminalBox = await terminal.boundingBox()
+  if (!reviewBox || !terminalBox) throw new Error("Review and terminal panels must be visible")
+  const dividerX = Math.round(terminalBox.x)
+
+  await page.mouse.move(reviewBox.x - 4, reviewBox.y + reviewBox.height / 2)
+  await page.mouse.down()
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error("Viewport size is unavailable")
+  await page.mouse.move(reviewBox.x + 100, reviewBox.y + reviewBox.height / 2)
+  await page.mouse.move(viewport.width - 1, reviewBox.y + reviewBox.height / 2)
+  await page.mouse.up()
+
+  await expect(review).toHaveCount(0)
+  await expect(terminal).toBeVisible()
+  await expect.poll(async () => Math.round((await terminal.boundingBox())?.x ?? -1)).toBe(dividerX)
+})
+
+test("keeps a custom review width across the desktop breakpoint", async ({ page }) => {
+  await setup(page)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto(sessionHref(sessionA))
+  await expectSessionTitle(page, titleA)
+  await page.getByRole("button", { name: "Toggle review" }).click()
+
+  const panel = page.locator("#review-panel")
+  await expect(panel).toBeVisible()
+  const box = await panel.boundingBox()
+  if (!box) throw new Error("Review panel is not visible")
+  await page.mouse.move(box.x - 4, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + 100, box.y + box.height / 2)
+  await page.mouse.up()
+  const customWidth = await expect
+    .poll(async () => Math.round((await panel.boundingBox())?.width ?? -1))
+    .toBeLessThan(430)
+    .then(() => panel.boundingBox().then((value) => Math.round(value?.width ?? -1)))
+
+  await page.setViewportSize({ width: 700, height: 900 })
+  await expect(panel).toHaveCount(0)
+  await page.setViewportSize({ width: 1_440, height: 900 })
+  await expect(panel).toBeVisible()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.width ?? -1)).toBe(customWidth)
+})
+
+test("reopens stale zero-width review at 480px", async ({ page }) => {
+  await setup(page, {
+    layout: { review: { diffStyle: "split", panelOpened: false }, session: { width: 10_000 } },
+  })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto(sessionHref(sessionA))
+  await expectSessionTitle(page, titleA)
+
+  const panel = page.locator("#review-panel")
+  await page.getByRole("button", { name: "Toggle review" }).click()
+  await expect(panel).toBeVisible()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.width ?? -1)).toBe(480)
+  const sessionWidth = await panel.evaluate((element) =>
+    Math.round(element.parentElement!.parentElement!.previousElementSibling!.getBoundingClientRect().width),
+  )
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (JSON.parse(localStorage.getItem("opencode.global.dat:layout") ?? "{}") as {
+            session?: { width?: number }
+          }).session?.width,
+      ),
+    )
+    .toBe(sessionWidth)
+
+  await page.getByRole("button", { name: "Toggle review" }).click()
+  await page.getByRole("button", { name: "Toggle review" }).click()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.width ?? -1)).toBe(480)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (JSON.parse(localStorage.getItem("opencode.global.dat:layout") ?? "{}") as {
+            review?: { panelOpened?: boolean }
+          }).review?.panelOpened,
+      ),
+    )
+    .toBe(true)
+
+  await page.reload()
+  await expectSessionTitle(page, titleA)
+  await expect(panel).toBeVisible()
+  await expect.poll(async () => Math.round((await panel.boundingBox())?.width ?? -1)).toBe(480)
+})
+
 async function selectMode(page: Page, current: string, next: string) {
   await page.getByRole("button", { name: current }).click()
   await page.getByRole("option", { name: next }).dispatchEvent("click")
@@ -102,7 +205,7 @@ async function switchSession(page: Page, title: string) {
   await expectSessionTitle(page, title)
 }
 
-async function setup(page: Page) {
+async function setup(page: Page, options?: { layout?: Record<string, unknown> }) {
   await mockOpenCodeServer(page, {
     protocol: "v1",
     directory,
@@ -147,8 +250,10 @@ async function setup(page: Page) {
     }),
   )
   await page.addInitScript(
-    ({ directory, server, sessions }) => {
+    ({ directory, layout, server, sessions }) => {
       localStorage.setItem("settings.v3", JSON.stringify({ general: { newLayoutDesigns: true } }))
+      if (layout && !localStorage.getItem("opencode.global.dat:layout"))
+        localStorage.setItem("opencode.global.dat:layout", JSON.stringify(layout))
       localStorage.setItem(
         "opencode.global.dat:server",
         JSON.stringify({
@@ -161,7 +266,7 @@ async function setup(page: Page) {
         JSON.stringify(sessions.map((sessionId: string) => ({ type: "session", server, sessionId }))),
       )
     },
-    { directory, server, sessions: [sessionA, sessionB] },
+    { directory, layout: options?.layout, server, sessions: [sessionA, sessionB] },
   )
 }
 

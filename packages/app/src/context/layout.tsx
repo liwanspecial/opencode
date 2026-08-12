@@ -750,13 +750,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           }
           setStore("session", "width", width)
         },
-        reset() {
-          if (!store.session) {
-            setStore("session", { width: DEFAULT_SESSION_WIDTH })
-            return
-          }
-          setStore("session", "width", DEFAULT_SESSION_WIDTH)
-        },
       },
       mobileSidebar: {
         opened: createMemo(() => store.mobileSidebar?.opened ?? false),
