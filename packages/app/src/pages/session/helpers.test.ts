@@ -193,6 +193,45 @@ describe("getTabReorderIndex", () => {
 })
 
 describe("createSessionTabs", () => {
+  test("exposes Files without the new-layout file browser", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({ active: "files" as string | undefined, all: [] as string[] })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: () => undefined,
+        normalizeTab: (tab) => tab,
+      })
+
+      expect(result.filesOpen()).toBe(true)
+      expect(result.activeTab()).toBe("files")
+      expect(result.closableTab()).toBeUndefined()
+      dispose()
+    })
+  })
+
+  test("treats Files as a fixed built-in tab", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({
+        active: "files" as string | undefined,
+        all: ["files", "file://src/a.ts"],
+      })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: (tab) => (tab.startsWith("file://") ? tab.slice("file://".length) : undefined),
+        normalizeTab: (tab) => tab,
+        fileBrowser: () => true,
+      })
+
+      expect(result.filesOpen()).toBe(true)
+      expect(result.panelTabs()).toEqual(["file://src/a.ts"])
+      expect(result.activeTab()).toBe("files")
+      expect(result.closableTab()).toBeUndefined()
+      dispose()
+    })
+  })
+
   test("normalizes the effective file tab", () => {
     createRoot((dispose) => {
       const [state] = createStore({
@@ -250,6 +289,61 @@ describe("createSessionTabs", () => {
       expect(result.activeTab()).toBe("review")
       expect(result.activeFileTab()).toBeUndefined()
       expect(result.closableTab()).toBeUndefined()
+      dispose()
+    })
+  })
+
+  test("keeps a selected Review tab only while project state is loading", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({
+        active: "review" as string | undefined,
+        all: [] as string[],
+      })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: () => undefined,
+        normalizeTab: (tab) => tab,
+        review: () => true,
+        hasReview: () => false,
+        reviewPending: () => true,
+      })
+
+      expect(result.activeTab()).toBe("review")
+      dispose()
+    })
+
+    createRoot((dispose) => {
+      const [state] = createStore({ active: "review" as string | undefined, all: [] as string[] })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: () => undefined,
+        normalizeTab: (tab) => tab,
+        review: () => true,
+        hasReview: () => false,
+        reviewPending: () => false,
+      })
+
+      expect(result.activeTab()).toBe("empty")
+      dispose()
+    })
+  })
+
+  test("keeps Review as the default tab while project state is loading", () => {
+    createRoot((dispose) => {
+      const [state] = createStore({ active: undefined as string | undefined, all: [] as string[] })
+      const tabs = createMemo(() => ({ active: () => state.active, all: () => state.all }))
+      const result = createSessionTabs({
+        tabs,
+        pathFromTab: () => undefined,
+        normalizeTab: (tab) => tab,
+        review: () => true,
+        hasReview: () => false,
+        reviewPending: () => true,
+      })
+
+      expect(result.activeTab()).toBe("review")
       dispose()
     })
   })

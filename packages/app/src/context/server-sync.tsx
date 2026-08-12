@@ -81,6 +81,10 @@ type McpResourceApi = {
   }
 }
 
+export function isServerProjectListReady(data: unknown, success: boolean) {
+  return data !== undefined && success
+}
+
 type ApiQueryOptions<T, K extends readonly unknown[]> = SolidQueryOptions<T, Error, T, K> & {
   initialData?: undefined
   queryKey: K
@@ -238,6 +242,7 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
   const [configQuery, providerQuery, pathQuery] = useQueries(() => ({
     queries: [queryOptionsApi.globalConfig(), queryOptionsApi.providers(null), queryOptionsApi.path(null)],
   }))
+  const projectQuery = useQuery(queryOptionsApi.projects)
   const activeSessionsQuery = useQuery(() =>
     loadActiveSessionsQuery(serverSDK.scope, {
       active: async () => {
@@ -678,6 +683,9 @@ export function createServerSyncContextInner(serverSDK: ServerSDK) {
     },
     get error() {
       return globalStore.error
+    },
+    get projectsReady() {
+      return isServerProjectListReady(projectQuery.data, projectQuery.isSuccess)
     },
     child: children.child,
     peek: children.peek,

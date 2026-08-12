@@ -67,7 +67,9 @@ function renderDiff(value: ReviewDiff): value is RenderDiff {
 
 export function SessionSidePanel(props: {
   canReview: () => boolean
+  reviewPending: () => boolean
   diffs: () => ReviewDiff[]
+  fileDiffs: () => ReviewDiff[]
   diffsReady: () => boolean
   empty: () => string
   hasReview: () => boolean
@@ -116,7 +118,9 @@ export function SessionSidePanel(props: {
 
   const diffs = createMemo(() => props.diffs().filter(renderDiff))
   const diffFiles = createMemo(() => diffs().map((d) => d.file))
-  const kinds = createMemo(() => {
+  const fileDiffs = createMemo(() => props.fileDiffs().filter(renderDiff))
+  const fileDiffFiles = createMemo(() => fileDiffs().map((d) => d.file))
+  const mapKinds = (diffs: RenderDiff[]) => {
     const merge = (a: "add" | "del" | "mix" | undefined, b: "add" | "del" | "mix") => {
       if (!a) return b
       if (a === b) return a
@@ -124,7 +128,7 @@ export function SessionSidePanel(props: {
     }
 
     const out = new Map<string, "add" | "del" | "mix">()
-    for (const diff of diffs()) {
+    for (const diff of diffs) {
       const file = normalizeFileTreeV2Path(diff.file)
       const kind = diff.status === "added" ? "add" : diff.status === "deleted" ? "del" : "mix"
 
@@ -138,7 +142,9 @@ export function SessionSidePanel(props: {
       }
     }
     return out
-  })
+  }
+  const kinds = createMemo(() => mapKinds(diffs()))
+  const fileKinds = createMemo(() => mapKinds(fileDiffs()))
 
   const empty = (msg: string) => (
     <div class="h-full flex flex-col">
@@ -179,6 +185,7 @@ export function SessionSidePanel(props: {
     normalizeTab,
     review: reviewTab,
     hasReview: props.canReview,
+    reviewPending: props.reviewPending,
     fileBrowser: () => !!props.fileBrowserState,
   })
   const contextOpen = tabState.contextOpen
@@ -187,6 +194,9 @@ export function SessionSidePanel(props: {
   const openedTabs = tabState.openedTabs
   const activeTab = tabState.activeTab
   const activeFileTab = tabState.activeFileTab
+  const reviewVisible = createMemo(
+    () => reviewTab() && (props.canReview() || (props.reviewPending() && activeTab() === "review")),
+  )
 
   const fileTreeTab = () => layout.fileTree.tab()
 
@@ -225,6 +235,7 @@ export function SessionSidePanel(props: {
   const browserTab = createMemo(() => {
     if (!props.fileBrowserState) return undefined
     const active = activeTab()
+    if (active === "files") return SESSION_OPEN_FILE_TAB
     if (active === SESSION_OPEN_FILE_TAB) return SESSION_OPEN_FILE_TAB
     if (active && file.pathFromTab(active)) return active
     return activeFileTab()
@@ -349,7 +360,7 @@ export function SessionSidePanel(props: {
                                 onCleanup(stop)
                               }}
                             >
-                              <Show when={reviewTab() && props.canReview()}>
+                              <Show when={reviewVisible()}>
                                 <Tabs.Trigger
                                   value="review"
                                   id={reviewTabID}
@@ -363,6 +374,9 @@ export function SessionSidePanel(props: {
                                   </div>
                                 </Tabs.Trigger>
                               </Show>
+                              <Tabs.Trigger value="files" id="session-side-panel-files-tab">
+                                {language.t("session.tab.files")}
+                              </Tabs.Trigger>
                               <Show when={contextOpen()}>
                                 <Tabs.Trigger
                                   value="context"
@@ -464,7 +478,7 @@ export function SessionSidePanel(props: {
                             </Tabs.List>
                           </div>
 
-                          <Show when={reviewTab() && props.canReview() && activeTab() === "review"}>
+                          <Show when={reviewVisible() && activeTab() === "review"}>
                             <div
                               id={reviewTabPanelID}
                               role="tabpanel"
@@ -494,6 +508,25 @@ export function SessionSidePanel(props: {
                             <Tabs.Content value="context" class="flex flex-col h-full overflow-hidden contain-strict">
                               <div class="relative pt-2 flex-1 min-h-0 overflow-hidden">
                                 <SessionContextTab />
+                              </div>
+                            </Tabs.Content>
+                          </Show>
+
+                          <Show when={activeTab() === "files"}>
+                            <Tabs.Content value="files" class="flex flex-col h-full overflow-hidden contain-strict">
+                              <div class="relative flex-1 min-h-0 overflow-hidden bg-background-stronger px-3 py-0">
+                                <Switch>
+                                  <Match when={nofiles()}>{empty(language.t("session.files.empty"))}</Match>
+                                  <Match when={true}>
+                                    <FileTree
+                                      path=""
+                                      class="pt-3"
+                                      modified={fileDiffFiles()}
+                                      kinds={fileKinds()}
+                                      onFileClick={(node) => openTab(file.tab(node.path))}
+                                    />
+                                  </Match>
+                                </Switch>
                               </div>
                             </Tabs.Content>
                           </Show>
@@ -556,11 +589,11 @@ export function SessionSidePanel(props: {
                             <Show when={props.reviewSidebarToggle}>
                               {(toggle) => (
                                 <div class="session-review-v2-sidebar-toggle-slot h-full shrink-0 sticky left-0 z-10 flex items-center justify-center bg-v2-background-bg-base">
-                                  {toggle()(activeTab() === SESSION_OPEN_FILE_TAB)}
+                                  {toggle()(activeTab() === "files" || activeTab() === SESSION_OPEN_FILE_TAB)}
                                 </div>
                               )}
                             </Show>
-                            <Show when={reviewTab() && props.canReview()}>
+                            <Show when={reviewVisible()}>
                               <Tabs.Trigger
                                 value="review"
                                 id={reviewTabID}
@@ -570,6 +603,9 @@ export function SessionSidePanel(props: {
                                   ? language.t("session.review.filesChanged", { count: props.reviewCount() })
                                   : language.t("session.tab.review")}
                               </Tabs.Trigger>
+                            </Show>
+                            <Show when={props.fileBrowserState}>
+                              <Tabs.Trigger value="files">{language.t("session.tab.files")}</Tabs.Trigger>
                             </Show>
                             <Show when={contextOpen()}>
                               <Tabs.Trigger
@@ -692,7 +728,7 @@ export function SessionSidePanel(props: {
                           </div>
                         </div>
 
-                        <Show when={reviewTab() && props.canReview() && activeTab() === "review"}>
+                        <Show when={reviewVisible() && activeTab() === "review"}>
                           <div
                             id={reviewTabPanelID}
                             role="tabpanel"
@@ -740,8 +776,9 @@ export function SessionSidePanel(props: {
                               placeholder={
                                 (browserTab() ?? activeFileTab() ?? SESSION_OPEN_FILE_TAB) === SESSION_OPEN_FILE_TAB
                               }
+                              showAllFiles={activeTab() === "files"}
                               active={file.pathFromTab(browserTab() ?? activeFileTab() ?? "")}
-                              kinds={kinds()}
+                              kinds={activeTab() === "files" ? fileKinds() : kinds()}
                               state={props.fileBrowserState!}
                               onSelect={(path) => previewTab(file.tab(path))}
                               onSelectPermanent={(path) => openTab(file.tab(path))}

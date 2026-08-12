@@ -10,12 +10,24 @@ import type {
 import { QueryClient } from "@tanstack/solid-query"
 import { canDisposeDirectory, pickDirectoriesToEvict } from "./global-sync/eviction"
 import { estimateRootSessionTotal, loadRootSessions } from "./global-sync/session-load"
-import { loadActiveSessionsQuery, loadMcpQuery, loadMcpResourcesQuery, seedActiveSessionStatuses } from "./server-sync"
+import {
+  isServerProjectListReady,
+  loadActiveSessionsQuery,
+  loadMcpQuery,
+  loadMcpResourcesQuery,
+  seedActiveSessionStatuses,
+} from "./server-sync"
 import { ServerScope } from "@/utils/server-scope"
 import { createServerSession } from "./server-session"
 import type { ServerApi } from "@/utils/server"
 
 type McpApi = ServerApi["mcp"]
+
+test("requires a successful project list before treating it as authoritative", () => {
+  expect(isServerProjectListReady(undefined, false)).toBe(false)
+  expect(isServerProjectListReady([], false)).toBe(false)
+  expect(isServerProjectListReady([], true)).toBe(true)
+})
 
 describe("MCP queries", () => {
   test("loads current servers for the requested location", async () => {

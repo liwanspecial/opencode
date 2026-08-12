@@ -103,6 +103,7 @@ import { useSessionCommands } from "@/pages/session/use-session-commands"
 import { useSessionHashScroll } from "@/pages/session/use-session-hash-scroll"
 import { Identifier } from "@/utils/id"
 import { diffs as list } from "@/utils/diffs"
+import { isPathInside } from "@/utils/path-key"
 import { Persist, persisted } from "@/utils/persist"
 import { extractPromptFromParts } from "@/utils/prompt"
 import { formatServerError, isLocalSessionNotFoundError, isSessionNotFoundError } from "@/utils/server-errors"
@@ -565,6 +566,15 @@ export default function Page() {
   const info = createMemo(() => (params.id ? sync().session.get(params.id) : undefined))
   const isChildSession = createMemo(() => !!info()?.parentID)
   const canReview = createMemo(() => !!sync().project)
+  const reviewPending = createMemo(() => {
+    if (!serverSync().projectsReady) return true
+    const known = serverSync().data.project.some(
+      (project) =>
+        isPathInside(sdk().directory, project.worktree) ||
+        project.sandboxes?.some((sandbox) => isPathInside(sdk().directory, sandbox)),
+    )
+    return known && !sync().project
+  })
   const reviewTab = createMemo(() => isDesktop())
   const tabState = createSessionTabs({
     tabs,
@@ -572,6 +582,7 @@ export default function Page() {
     normalizeTab,
     review: reviewTab,
     hasReview: canReview,
+    reviewPending,
   })
   const activeTab = tabState.activeTab
   const activeFileTab = tabState.activeFileTab
@@ -730,6 +741,18 @@ export default function Page() {
         : skipToken,
     }
   })
+  const filesVcsQuery = createQuery(() => ({
+    queryKey: [...vcsKey(), "git"] as const,
+    enabled: isDesktop() && desktopReviewOpen() && activeTab() === "files" && sync().project?.vcs === "git",
+    queryFn: () =>
+      sdk()
+        .api.vcs.diff({ location: { directory: sdk().directory }, mode: "working" })
+        .then((result) => result.data)
+        .catch((error) => {
+          console.debug("[session-files] failed to load vcs diff", { error })
+          return []
+        }),
+  }))
   const refreshVcs = debounce(() => void queryClient.invalidateQueries({ queryKey: vcsKey() }), 100)
   const reviewDiffs = () => {
     if (reviewMode() === "git" || reviewMode() === "branch")
@@ -737,6 +760,7 @@ export default function Page() {
       return vcsQuery.isFetched ? (vcsQuery.data ?? []) : []
     return turnDiffs()
   }
+  const fileDiffs = () => (filesVcsQuery.isFetched ? (filesVcsQuery.data ?? []) : [])
   const activeReviewFile = () => {
     const diffs = reviewDiffs()
     const selected = reviewFile()
@@ -2350,7 +2374,9 @@ export default function Page() {
           <Suspense>
             <SessionSidePanel
               canReview={canReview}
+              reviewPending={reviewPending}
               diffs={reviewDiffs}
+              fileDiffs={fileDiffs}
               diffsReady={reviewReady}
               empty={reviewEmptyText}
               hasReview={hasReview}
@@ -2372,7 +2398,9 @@ export default function Page() {
                   <Suspense>
                     <SessionSidePanel
                       canReview={canReview}
+                      reviewPending={reviewPending}
                       diffs={reviewDiffs}
+                      fileDiffs={fileDiffs}
                       diffsReady={reviewReady}
                       empty={reviewEmptyText}
                       hasReview={hasReview}

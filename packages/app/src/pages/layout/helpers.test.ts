@@ -24,7 +24,7 @@ import {
   toggleHomeProjectSelection,
   workspaceExpansionState,
 } from "./helpers"
-import { pathKey } from "@/utils/path-key"
+import { isPathInside, pathKey } from "@/utils/path-key"
 import { ServerConnection } from "@/context/server"
 
 const serverKey = ServerConnection.Key.make
@@ -152,6 +152,14 @@ describe("layout workspace helpers", () => {
     expect(String(pathKey("C:\\"))).toBe("C:/")
     expect(String(pathKey("C://"))).toBe("C:/")
     expect(String(pathKey("C:///"))).toBe("C:/")
+  })
+
+  test("matches directories inside a normalized project root", () => {
+    expect(isPathInside("C:\\repo\\src", "C:/repo")).toBe(true)
+    expect(isPathInside("c:\\repo\\src", "C:/Repo")).toBe(true)
+    expect(isPathInside("//server/share/repo/src", "//Server/Share/Repo")).toBe(true)
+    expect(isPathInside("/repo/src", "/repo")).toBe(true)
+    expect(isPathInside("/repository/src", "/repo")).toBe(false)
   })
 
   test("keeps local first while preserving known order", () => {

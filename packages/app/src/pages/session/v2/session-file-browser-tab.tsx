@@ -1,4 +1,5 @@
-import { createMemo, createSignal, createUniqueId, Show } from "solid-js"
+import { createMemo, createUniqueId, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 import { createQuery } from "@tanstack/solid-query"
 import { Icon } from "@opencode-ai/ui/icon"
 import { SessionFilePanelV2, SessionFilePanelV2Empty } from "@opencode-ai/session-ui/v2/session-file-panel-v2"
@@ -27,6 +28,7 @@ export type SessionFileBrowserState = {
 export function SessionFileBrowserTab(props: {
   tab: string
   placeholder: boolean
+  showAllFiles?: boolean
   active?: string
   kinds: ReadonlyMap<string, Kind>
   state: SessionFileBrowserState
@@ -40,8 +42,15 @@ export function SessionFileBrowserTab(props: {
   const sdk = useSDK()
   const { workspaceKey } = useSessionLayout()
   const resultsID = `session-file-browser-results-${createUniqueId()}`
-  const [filter, setFilter] = createSignal("")
-  const [explicitHighlight, setExplicitHighlight] = createSignal<string>()
+  const [store, setStore] = createStore({
+    filter: { files: "", openFile: "" },
+    highlight: { files: undefined as string | undefined, openFile: undefined as string | undefined },
+  })
+  const mode = () => (props.showAllFiles ? "files" : "openFile")
+  const filter = () => store.filter[mode()]
+  const setFilter = (value: string) => setStore("filter", mode(), value)
+  const explicitHighlight = () => store.highlight[mode()]
+  const setExplicitHighlight = (value: string | undefined) => setStore("highlight", mode(), value)
   const sidebarOpened = () => props.placeholder || props.state.sidebarOpened()
   const query = createMemo(() => filter().trim())
   const search = createQuery(() => {
@@ -64,6 +73,7 @@ export function SessionFileBrowserTab(props: {
     return values[0]
   })
   const loading = createMemo(() => query().length > 0 && search.isPending)
+
   const project = createMemo(() => {
     const directory = pathKey(sdk().directory)
     return layout.projects

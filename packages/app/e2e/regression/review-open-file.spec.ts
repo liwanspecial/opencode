@@ -93,6 +93,19 @@ test("opens and searches project files inline", async ({ page }) => {
   const sidebar = panel.locator('[data-slot="session-review-v2-sidebar"]')
   const sidebarToggle = panel.getByRole("button", { name: "Toggle file tree" })
   const contextButton = page.getByRole("button", { name: "View context usage" })
+  const filesTab = panel.getByRole("tab", { name: "Files", exact: true })
+  await expect(filesTab).toBeVisible()
+  await filesTab.click()
+  await expect(filesTab).toHaveAttribute("data-selected", "")
+  await expect(panel.getByText("open-file-project", { exact: true })).toBeVisible()
+  await expect(sidebar).toBeVisible()
+  await panel.getByRole("button", { name: "README.md" }).click()
+  await expect(panel.getByRole("tab", { name: "README.md" })).toHaveAttribute("data-selected", "")
+  await expect(panel.getByText("contents:README.md", { exact: true })).toBeVisible()
+  await filesTab.click()
+  await expect(filesTab).toHaveAttribute("data-selected", "")
+  await panel.locator("#session-side-panel-review-tab").click()
+  await expect(panel.locator("#session-side-panel-review-tab")).toHaveAttribute("data-selected", "")
   await contextButton.click()
   await expect(panel.getByRole("tab", { name: "Context" })).toHaveAttribute("data-selected", "")
   await panel.getByRole("button", { name: "Open file" }).click()
@@ -133,12 +146,87 @@ test("opens and searches project files inline", async ({ page }) => {
   await expect(panel.getByRole("tab", { name: "nested.ts" })).toHaveCount(1)
   await expect(panel.getByRole("tab", { name: "Open file" })).toHaveAttribute("data-selected", "")
   await expect(sidebarToggle).toBeDisabled()
+  await filter.fill("nested")
+  await expect(panel.getByRole("option", { name: /nested\.ts/ })).toBeVisible()
+  await filesTab.click()
+  await expect(panel.getByRole("button", { name: "README.md" })).toBeVisible()
   await panel.locator("#session-side-panel-review-tab").click()
   await expect(sidebarToggle).toBeEnabled()
   await panel.getByRole("tab", { name: "Open file" }).click()
+  await expect(filter).toHaveValue("nested")
+  await expect(panel.getByRole("option", { name: /nested\.ts/ })).toBeVisible()
   await page.keyboard.press("Control+w")
   await expect(panel.getByRole("tab", { name: "Open file" })).toHaveCount(0)
   await expect(panel.getByRole("tab", { name: "nested.ts" })).toHaveAttribute("data-selected", "")
+})
+
+test("hides Review after loading a session without a project", async ({ page }) => {
+  await mockOpenCodeServer(page, {
+    directory,
+    project: {
+      id: projectID,
+      worktree: directory,
+      vcs: "git",
+      name: "open-file-project",
+      time: { created: 1700000000000, updated: 1700000000000 },
+      sandboxes: [],
+    },
+    provider: {
+      all: [
+        {
+          id: "opencode",
+          name: "OpenCode",
+          models: { test: { id: "test", name: "Test", limit: { context: 200_000 } } },
+        },
+      ],
+      connected: ["opencode"],
+      default: { providerID: "opencode", modelID: "test" },
+    },
+    sessions: [
+      {
+        id: sessionID,
+        slug: sessionID,
+        projectID,
+        directory,
+        title,
+        version: "dev",
+        time: { created: 1700000000000, updated: 1700000000000 },
+      },
+    ],
+    fileList: () => [],
+    pageMessages: () => ({ items: [] }),
+  })
+  await page.route(/\/project(?:\?.*)?$/, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  )
+  await page.addInitScript(
+    ({ directory, server, sessionID }) => {
+      localStorage.setItem("settings.v3", JSON.stringify({ general: { newLayoutDesigns: true } }))
+      localStorage.setItem(
+        "opencode.global.dat:server",
+        JSON.stringify({
+          projects: { local: [{ worktree: directory, expanded: true }] },
+          lastProject: { local: directory },
+        }),
+      )
+      localStorage.setItem(
+        "opencode.global.dat:layout",
+        JSON.stringify({ review: { diffStyle: "split", panelOpened: true } }),
+      )
+      localStorage.setItem(
+        "opencode.window.browser.dat:tabs",
+        JSON.stringify([{ type: "session", server, sessionId: sessionID }]),
+      )
+    },
+    { directory, server, sessionID },
+  )
+
+  await page.goto(`/server/${base64Encode(server)}/session/${sessionID}`)
+  await expectSessionTitle(page, title)
+
+  const panel = page.locator("#review-panel")
+  await expect(panel.getByRole("tab", { name: "Review", exact: true })).toHaveCount(0)
+  await expect(panel.getByRole("tab", { name: "Files", exact: true })).toBeVisible()
 })
 
 function fileNode(path: string) {
