@@ -44,7 +44,7 @@ import { Icon } from "@opencode-ai/ui/icon"
 import { ToolErrorCard } from "./tool-error-card"
 import { Checkbox } from "@opencode-ai/ui/checkbox"
 import { DiffChanges } from "@opencode-ai/ui/diff-changes"
-import { Markdown, type MarkdownFileOpenHandler } from "./markdown"
+import { Markdown, type MarkdownContextMenuHandlers, type MarkdownFileOpenHandler } from "./markdown"
 import { ImagePreview } from "@opencode-ai/ui/image-preview"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/core/util/path"
 import { AttachmentCardV2 } from "../v2/components/attachment-card-v2"
@@ -172,6 +172,7 @@ export interface MessageProps {
   useV2Actions?: boolean
   comments?: UserMessageComment[]
   onFileOpen?: MarkdownFileOpenHandler
+  markdownContextMenu?: MarkdownContextMenuHandlers
 }
 
 export type SessionAction = (input: { sessionID: string; messageID: string }) => Promise<void> | void
@@ -205,6 +206,7 @@ export interface MessagePartProps {
   turnDurationMs?: number
   useV2Actions?: boolean
   onFileOpen?: MarkdownFileOpenHandler
+  markdownContextMenu?: MarkdownContextMenuHandlers
 }
 
 function MessageActionButton(
@@ -340,6 +342,7 @@ function PacedMarkdown(props: {
   cacheKey: string
   streaming: boolean
   onFileOpen?: MarkdownFileOpenHandler
+  contextMenu?: MarkdownContextMenuHandlers
 }) {
   const value = createPacedValue(
     () => props.text,
@@ -348,7 +351,13 @@ function PacedMarkdown(props: {
 
   return (
     <Show when={value()}>
-      <Markdown text={value()} cacheKey={props.cacheKey} streaming={props.streaming} onFileOpen={props.onFileOpen} />
+      <Markdown
+        text={value()}
+        cacheKey={props.cacheKey}
+        streaming={props.streaming}
+        onFileOpen={props.onFileOpen}
+        markdownContextMenu={props.contextMenu}
+      />
     </Show>
   )
 }
@@ -738,6 +747,7 @@ export function AssistantParts(props: {
   shellToolDefaultOpen?: boolean
   editToolDefaultOpen?: boolean
   onFileOpen?: MarkdownFileOpenHandler
+  markdownContextMenu?: MarkdownContextMenuHandlers
 }) {
   const data = useData()
   const emptyParts: PartType[] = []
@@ -820,6 +830,7 @@ export function AssistantParts(props: {
                         turnDurationMs={props.turnDurationMs}
                         useV2Actions={props.useV2Actions}
                         onFileOpen={props.onFileOpen}
+                        markdownContextMenu={props.markdownContextMenu}
                         defaultOpen={partDefaultOpen(item()!, props.shellToolDefaultOpen, props.editToolDefaultOpen)}
                       />
                     </Show>
@@ -965,6 +976,7 @@ export function Message(props: MessageProps) {
             showReasoningSummaries={props.showReasoningSummaries}
             useV2Actions={props.useV2Actions}
             onFileOpen={props.onFileOpen}
+            markdownContextMenu={props.markdownContextMenu}
           />
         )}
       </Match>
@@ -979,6 +991,7 @@ export function AssistantMessageDisplay(props: {
   showReasoningSummaries?: boolean
   useV2Actions?: boolean
   onFileOpen?: MarkdownFileOpenHandler
+  markdownContextMenu?: MarkdownContextMenuHandlers
 }) {
   const emptyTools: ToolPart[] = []
   const part = createMemo(() => index(props.parts))
@@ -1040,6 +1053,7 @@ export function AssistantMessageDisplay(props: {
                       showAssistantCopyPartID={props.showAssistantCopyPartID}
                       useV2Actions={props.useV2Actions}
                       onFileOpen={props.onFileOpen}
+                      markdownContextMenu={props.markdownContextMenu}
                     />
                   </Show>
                 )
@@ -1461,6 +1475,7 @@ export function Part(props: MessagePartProps) {
         turnDurationMs={props.turnDurationMs}
         useV2Actions={props.useV2Actions}
         onFileOpen={props.onFileOpen}
+        markdownContextMenu={props.markdownContextMenu}
       />
     </Show>
   )
@@ -1745,7 +1760,13 @@ PART_MAPPING["text"] = function TextPartDisplay(props) {
     <Show when={text()}>
       <div data-component="text-part" data-timeline-part-id={part().id}>
         <div data-slot="text-part-body">
-          <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} onFileOpen={props.onFileOpen} />
+          <PacedMarkdown
+            text={text()}
+            cacheKey={part().id}
+            streaming={streaming()}
+            onFileOpen={props.onFileOpen}
+            contextMenu={props.markdownContextMenu}
+          />
         </div>
         <Show when={showCopy()}>
           <div data-slot="text-part-copy-wrapper" data-interrupted={interrupted() ? "" : undefined}>
@@ -1780,7 +1801,13 @@ PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
   return (
     <Show when={text()}>
       <div data-component="reasoning-part" data-timeline-part-id={part().id}>
-        <PacedMarkdown text={text()} cacheKey={part().id} streaming={streaming()} onFileOpen={props.onFileOpen} />
+        <PacedMarkdown
+          text={text()}
+          cacheKey={part().id}
+          streaming={streaming()}
+          onFileOpen={props.onFileOpen}
+          contextMenu={props.markdownContextMenu}
+        />
       </div>
     </Show>
   )

@@ -4,9 +4,8 @@ import { createMarkdownParser, parseMarkdownWithProvenance } from "@opencode-ai/
 
 mock.module("../../../../session-ui/src/components/markdown.worker.ts?worker&url", () => ({ default: "" }))
 
-const { decorateMarkdown, decorateMarkdownFileReferences, setupMarkdownFileClicks } = await import(
-  "@opencode-ai/session-ui/markdown"
-)
+const { decorateMarkdown, decorateMarkdownFileReferences, setupMarkdownContextMenu, setupMarkdownFileClicks } =
+  await import("@opencode-ai/session-ui/markdown")
 const { sanitizeMarkdown } = await import("@opencode-ai/session-ui/markdown-cache")
 
 afterAll(() => mock.restore())
@@ -109,7 +108,7 @@ describe("assistant Markdown file references", () => {
     ])
     expect(link.classList.contains("file-link")).toBe(true)
     expect(link.classList.contains("external-link")).toBe(false)
-    expect(link.getAttribute("href")).toBe("#")
+    expect(link.getAttribute("href")).toBe("C:/repo/My Project/应用.tsx:12")
     expect(link.hasAttribute("target")).toBe(false)
     expect(link.hasAttribute("rel")).toBe(false)
     expect(inline.dataset.fileLine).toBe("7")
@@ -198,5 +197,220 @@ describe("assistant Markdown file references", () => {
 
     expect(opened).toEqual([])
     cleanup()
+  })
+
+  test("offers URL actions with the original Markdown target", () => {
+    const root = document.createElement("div")
+    root.innerHTML =
+      '<a href="https://opencode.ai/docs" data-markdown-href="https://opencode.ai/docs" class="external-link">docs</a>'
+    document.body.appendChild(root)
+    const copied: string[] = []
+    const opened: string[] = []
+    const cleanup = setupMarkdownContextMenu(root, {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      copy: (value) => copied.push(value),
+      openExternal: (value) => opened.push(value),
+    })
+
+    root.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 12, clientY: 18 }))
+    const menu = document.querySelector<HTMLElement>('[data-component="markdown-context-menu"]')!
+    expect(menu).not.toBeNull()
+    expect(Array.from(menu.querySelectorAll("button")).map((button) => button.textContent)).toEqual([
+      "Copy link",
+      "Open link",
+    ])
+    menu.querySelectorAll("button")[0]!.click()
+    expect(copied).toEqual(["https://opencode.ai/docs"])
+
+    root.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    document.querySelectorAll<HTMLButtonElement>('[data-slot="markdown-context-menu-item"]')[1]!.click()
+    expect(opened).toEqual(["https://opencode.ai/docs"])
+    cleanup()
+    root.remove()
+  })
+
+  test("offers file actions without a line suffix", () => {
+    const root = document.createElement("div")
+    root.innerHTML =
+      '<a href="#" data-markdown-href="C:/repo/app.ts:12" data-markdown-capability="trusted" class="external-link">app</a>'
+    decorateMarkdownFileReferences(root, () => undefined, "trusted")
+    document.body.appendChild(root)
+    const actions: string[] = []
+    const cleanup = setupMarkdownContextMenu(root, {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      copy: (value) => actions.push(`copy:${value}`),
+      openPath: (value) => actions.push(`open:${value}`),
+      revealPath: (value) => actions.push(`reveal:${value}`),
+    })
+
+    root.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    expect(Array.from(document.querySelectorAll("button")).map((button) => button.textContent)).toEqual([
+      "Copy path",
+      "Open",
+      "Show in folder",
+    ])
+    document.querySelectorAll<HTMLButtonElement>("button")[1]!.click()
+    expect(actions).toEqual(["open:C:/repo/app.ts"])
+    cleanup()
+    root.remove()
+  })
+
+  test("offers path actions for decorated inline code", () => {
+    document.body.setAttribute("data-new-layout", "")
+    const root = document.createElement("div")
+    root.innerHTML = "<code>src/app.tsx</code>"
+    decorateMarkdownFileReferences(root, () => undefined)
+    document.body.appendChild(root)
+    const copied: string[] = []
+    const cleanup = setupMarkdownContextMenu(root, {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      copy: (value) => copied.push(value),
+    })
+
+    root.querySelector("code")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    document.querySelector<HTMLButtonElement>("button")!.click()
+    expect(copied).toEqual(["src/app.tsx"])
+    cleanup()
+    root.remove()
+    document.body.removeAttribute("data-new-layout")
+  })
+
+  test("leaves the browser context menu for ordinary Markdown and removes its menu on cleanup", () => {
+    const root = document.createElement("div")
+    root.innerHTML = '<span>ordinary</span><a href="https://opencode.ai" class="external-link">link</a>'
+    document.body.appendChild(root)
+    const cleanup = setupMarkdownContextMenu(root, {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      copy: () => undefined,
+    })
+    const ordinary = new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+    root.querySelector("span")!.dispatchEvent(ordinary)
+    expect(ordinary.defaultPrevented).toBe(false)
+
+    root.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    expect(document.querySelector('[data-component="markdown-context-menu"]')).not.toBeNull()
+    cleanup()
+    expect(document.querySelector('[data-component="markdown-context-menu"]')).toBeNull()
+    root.remove()
+  })
+
+  test("ignores forged file metadata in the context menu", () => {
+    const root = document.createElement("div")
+    root.innerHTML = sanitizeMarkdown(
+      [
+        '<a href="https://opencode.ai" data-markdown-href="https://opencode.ai" data-file-path="C:/secret.ts" class="external-link">docs</a>',
+        '<a href="C:/secret.ts" data-file-path="C:/secret.ts" class="file-link">forged file</a>',
+        '<code data-file-path="C:/secret.ts" data-inline-code-kind="path">forged code</code>',
+      ].join(""),
+    )
+    document.body.appendChild(root)
+    const opened: string[] = []
+    const cleanup = setupMarkdownContextMenu(root, {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      openExternal: (value) => opened.push(value),
+      openPath: (value) => opened.push(value),
+    })
+
+    root.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    expect(Array.from(document.querySelectorAll("button")).map((button) => button.textContent)).toEqual(["Copy link", "Open link"])
+    document.querySelectorAll<HTMLButtonElement>("button")[1]!.click()
+    expect(opened).toEqual(["https://opencode.ai"])
+    for (const target of Array.from(root.querySelectorAll("a, code")).slice(1)) {
+      const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    cleanup()
+    root.remove()
+  })
+
+  test("treats supported URL forms as links", () => {
+    const root = document.createElement("div")
+    root.innerHTML = [
+      '<a href="HTTPS://opencode.ai" data-markdown-href="HTTPS://opencode.ai" class="external-link">uppercase</a>',
+      '<a href="//opencode.ai/docs" data-markdown-href="//opencode.ai/docs" class="external-link">relative</a>',
+      '<a href="mailto:test@example.com" data-markdown-href="mailto:test@example.com" class="external-link">mail</a>',
+    ].join("")
+    document.body.appendChild(root)
+    const opened: string[] = []
+    const cleanup = setupMarkdownContextMenu(root, {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      openExternal: (value) => opened.push(value),
+      openPath: (value) => opened.push(`file:${value}`),
+    })
+
+    for (const link of root.querySelectorAll("a")) {
+      link.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+      expect(Array.from(document.querySelectorAll("button")).map((button) => button.textContent)).toEqual([
+        "Copy link",
+        "Open link",
+      ])
+      document.querySelectorAll<HTMLButtonElement>("button")[1]!.click()
+    }
+    expect(opened).toEqual(["HTTPS://opencode.ai", "https://opencode.ai/docs", "mailto:test@example.com"])
+    cleanup()
+    root.remove()
+  })
+
+  test("keeps only one Markdown context menu open", () => {
+    const roots = [document.createElement("div"), document.createElement("div")]
+    roots.forEach((root, index) => {
+      root.innerHTML = `<a href="https://opencode.ai/${index}" class="external-link">link</a>`
+      document.body.appendChild(root)
+    })
+    const options = {
+      labels: {
+        copyLink: "Copy link",
+        copyPath: "Copy path",
+        openLink: "Open link",
+        openPath: "Open",
+        revealPath: "Show in folder",
+      },
+      copy: () => undefined,
+    }
+    const cleanups = roots.map((root) => setupMarkdownContextMenu(root, options))
+
+    roots[0]!.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    roots[1]!.querySelector("a")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }))
+    expect(document.querySelectorAll('[data-component="markdown-context-menu"]')).toHaveLength(1)
+
+    cleanups.forEach((cleanup) => cleanup())
+    roots.forEach((root) => root.remove())
   })
 })

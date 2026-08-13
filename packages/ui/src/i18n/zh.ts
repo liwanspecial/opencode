@@ -193,6 +193,12 @@ export const dict = {
   "ui.message.queued": "排队中",
   "ui.message.attachment.alt": "附件",
 
+  "ui.markdown.contextMenu.copyLink": "复制链接",
+  "ui.markdown.contextMenu.copyPath": "复制路径",
+  "ui.markdown.contextMenu.openLink": "打开链接",
+  "ui.markdown.contextMenu.openPath": "打开",
+  "ui.markdown.contextMenu.revealPath": "在文件夹中显示",
+
   "ui.patch.action.deleted": "已删除",
   "ui.patch.action.created": "已创建",
   "ui.patch.action.moved": "已移动",

@@ -40,7 +40,7 @@ import { DialogFooter, DialogHeader, DialogTitleGroup, DialogV2 } from "@opencod
 import { InlineInput } from "@opencode-ai/ui/inline-input"
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { SessionRetry } from "@opencode-ai/session-ui/session-retry"
-import type { MarkdownFileOpenHandler } from "@opencode-ai/session-ui/markdown"
+import type { MarkdownContextMenuHandlers, MarkdownFileOpenHandler } from "@opencode-ai/session-ui/markdown"
 import { isScrollKeyTarget, scrollKey, scrollKeyOwner, ScrollView } from "@opencode-ai/ui/scroll-view"
 import { StickyAccordionHeader } from "@opencode-ai/ui/sticky-accordion-header"
 import { TextField } from "@opencode-ai/ui/text-field"
@@ -65,6 +65,7 @@ import { useDialog } from "@opencode-ai/ui/context/dialog"
 import { useLanguage } from "@/context/language"
 import { useSessionKey } from "@/pages/session/session-layout"
 import { useServerSDK } from "@/context/server-sdk"
+import { useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { useSettings } from "@/context/settings"
 import { useTabs } from "@/context/tabs"
@@ -262,6 +263,7 @@ export function MessageTimeline(props: {
 
   const navigate = useNavigate()
   const serverSDK = useServerSDK()
+  const server = useServer()
   const sdk = useSDK()
   const sync = useSync()
   const settings = useSettings()
@@ -274,6 +276,16 @@ export function MessageTimeline(props: {
   const initialMeasurements = cached?.measurements
   const coldBottomMount = !initialMeasurements?.length && props.shouldAnchorBottom()
   const platform = usePlatform()
+  const markdownPath = (path: string) => {
+    if (path.startsWith("/") || path.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(path)) return path
+    return `${sdk().directory.replace(/[\\/]+$/, "")}/${path.replace(/^[\\/]+/, "")}`
+  }
+  const markdownContextMenu = createMemo<MarkdownContextMenuHandlers>(() => ({
+    copy: (value) => navigator.clipboard.writeText(value),
+    openExternal: (url) => platform.openExternal(url),
+    openPath: platform.openPath && server.isLocal() ? (path) => platform.openPath!(markdownPath(path)) : undefined,
+    revealPath: platform.revealPath && server.isLocal() ? (path) => platform.revealPath!(markdownPath(path)) : undefined,
+  }))
 
   const [listRoot, setListRoot] = createSignal<HTMLDivElement>()
   const sessionID = createMemo(() => params.id)
@@ -1083,6 +1095,7 @@ export function MessageTimeline(props: {
                 virtualizeDiff={false}
                 onContentRendered={onSizeChange}
                 onFileOpen={props.onFileOpen}
+                markdownContextMenu={markdownContextMenu()}
               />
             )}
           </Show>

@@ -108,6 +108,23 @@ type CopyLabels = {
   copied: string
 }
 
+export type MarkdownContextMenuHandlers = {
+  copy?: (value: string) => unknown
+  openExternal?: (url: string) => unknown
+  openPath?: (path: string) => unknown
+  revealPath?: (path: string) => unknown
+}
+
+type MarkdownContextMenuOptions = MarkdownContextMenuHandlers & {
+  labels: {
+    copyLink: string
+    copyPath: string
+    openLink: string
+    openPath: string
+    revealPath: string
+  }
+}
+
 type CopyButtonState = {
   setLabels: Setter<CopyLabels>
   setCopied: Setter<boolean>
@@ -431,7 +448,7 @@ export function decorateMarkdownFileReferences(
     const reference = parseMarkdownFileReference(anchor.dataset.markdownHref ?? "", "link")
     if (!reference) return
     markFileReference(anchor, reference)
-    anchor.setAttribute("href", "#")
+    anchor.setAttribute("href", anchor.dataset.markdownHref ?? reference.path)
     anchor.classList.remove("external-link")
     anchor.classList.add("file-link")
     anchor.removeAttribute("target")
@@ -486,6 +503,89 @@ export function setupMarkdownFileClicks(
 
   root.addEventListener("click", handleClick)
   return () => root.removeEventListener("click", handleClick)
+}
+
+function markdownContextTarget(target: Element) {
+  const file = target.closest<HTMLElement>("[data-file-path]")
+  const reference = file ? markdownFileReferences.get(file) : undefined
+  if (reference) return { kind: "file" as const, value: reference.path }
+  const link = target.closest<HTMLAnchorElement>("a.external-link")
+  if (link) {
+    const href = link.dataset.markdownHref || link.getAttribute("href") || ""
+    if (href) return { kind: "url" as const, value: href }
+  }
+}
+
+export function setupMarkdownContextMenu(root: HTMLDivElement, options: MarkdownContextMenuOptions) {
+  let menu: HTMLDivElement | undefined
+  const closeEvent = "opencode-markdown-context-menu-close"
+  const remove = () => {
+    menu?.remove()
+    menu = undefined
+  }
+  const run = (action: () => unknown) => {
+    remove()
+    void action()
+  }
+  const item = (label: string, action: () => unknown) => {
+    const button = document.createElement("button")
+    button.type = "button"
+    button.dataset.slot = "markdown-context-menu-item"
+    button.textContent = label
+    button.addEventListener("click", () => run(action))
+    return button
+  }
+  const handleContextMenu = (event: MouseEvent) => {
+    document.dispatchEvent(new CustomEvent(closeEvent, { detail: root }))
+    remove()
+    if (!(event.target instanceof Element)) return
+    const target = markdownContextTarget(event.target)
+    if (!target?.value) return
+    event.preventDefault()
+    event.stopPropagation()
+    menu = document.createElement("div")
+    menu.dataset.component = "markdown-context-menu"
+    const copy = options.copy ?? ((value: string) => navigator.clipboard?.writeText(value))
+    menu.appendChild(item(target.kind === "url" ? options.labels.copyLink : options.labels.copyPath, () => copy(target.value)))
+    if (target.kind === "url" && options.openExternal) {
+      menu.appendChild(
+        item(options.labels.openLink, () => options.openExternal!(target.value.startsWith("//") ? `https:${target.value}` : target.value)),
+      )
+    }
+    if (target.kind === "file") {
+      if (options.openPath) menu.appendChild(item(options.labels.openPath, () => options.openPath!(target.value)))
+      if (options.revealPath)
+        menu.appendChild(item(options.labels.revealPath, () => options.revealPath!(target.value)))
+    }
+    document.body.appendChild(menu)
+    const menuRect = menu.getBoundingClientRect()
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - menuRect.width - 8))}px`
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - menuRect.height - 8))}px`
+  }
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") remove()
+  }
+  const handleClose = (event: Event) => {
+    if (event instanceof CustomEvent && event.detail === root) return
+    remove()
+  }
+  root.addEventListener("contextmenu", handleContextMenu)
+  document.addEventListener(closeEvent, handleClose)
+  document.addEventListener("click", remove)
+  document.addEventListener("scroll", remove, true)
+  document.addEventListener("keydown", handleKeyDown)
+  window.addEventListener("blur", remove)
+  window.addEventListener("resize", remove)
+  return () => {
+    root.removeEventListener("contextmenu", handleContextMenu)
+    document.removeEventListener(closeEvent, handleClose)
+    document.removeEventListener("click", remove)
+    document.removeEventListener("scroll", remove, true)
+    document.removeEventListener("keydown", handleKeyDown)
+    window.removeEventListener("blur", remove)
+    window.removeEventListener("resize", remove)
+    remove()
+  }
 }
 
 function setupCodeCopy(root: HTMLDivElement, getLabels: () => CopyLabels) {
@@ -572,9 +672,18 @@ export function Markdown(
     class?: string
     classList?: Record<string, boolean>
     onFileOpen?: MarkdownFileOpenHandler
+    markdownContextMenu?: MarkdownContextMenuHandlers
   },
 ) {
-  const [local, others] = splitProps(props, ["text", "cacheKey", "streaming", "class", "classList", "onFileOpen"])
+  const [local, others] = splitProps(props, [
+    "text",
+    "cacheKey",
+    "streaming",
+    "class",
+    "classList",
+    "onFileOpen",
+    "markdownContextMenu",
+  ])
   const i18n = useI18n()
   const [root, setRoot] = createSignal<HTMLDivElement>()
   const owner = createUniqueId()
@@ -750,6 +859,23 @@ export function Markdown(
         copied: i18n.t("ui.message.copied"),
       }))
     if (!fileCleanup) fileCleanup = setupMarkdownFileClicks(container, () => local.onFileOpen)
+  })
+
+  createEffect(() => {
+    const container = root()
+    const handlers = local.markdownContextMenu
+    if (!container || !handlers || isServer) return
+    const cleanup = setupMarkdownContextMenu(container, {
+      ...handlers,
+      labels: {
+        copyLink: i18n.t("ui.markdown.contextMenu.copyLink"),
+        copyPath: i18n.t("ui.markdown.contextMenu.copyPath"),
+        openLink: i18n.t("ui.markdown.contextMenu.openLink"),
+        openPath: i18n.t("ui.markdown.contextMenu.openPath"),
+        revealPath: i18n.t("ui.markdown.contextMenu.revealPath"),
+      },
+    })
+    onCleanup(cleanup)
   })
 
   onCleanup(() => {

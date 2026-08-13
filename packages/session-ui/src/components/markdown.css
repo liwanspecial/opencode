@@ -389,6 +389,43 @@
   }
 }
 
+[data-component="markdown-context-menu"] {
+  position: fixed;
+  z-index: 100;
+  min-width: 136px;
+  padding: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs-border);
+  background-color: var(--surface-raised-stronger-non-alpha);
+
+  [data-slot="markdown-context-menu-item"] {
+    display: flex;
+    width: 100%;
+    min-height: 28px;
+    align-items: center;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    outline: none;
+    background: transparent;
+    color: var(--text-strong);
+    cursor: default;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    letter-spacing: 0;
+    text-align: start;
+    white-space: nowrap;
+
+    &:hover,
+    &:focus-visible {
+      background-color: var(--surface-raised-base-hover);
+    }
+  }
+}
+
 [data-component="markdown"] > * {
   unicode-bidi: plaintext;
 }
