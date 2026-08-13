@@ -42,8 +42,21 @@ function wrap(message: unknown): ReturnType<NamedError["toObject"]> {
 describe("session.retry.delay", () => {
   test("caps delay at 10 seconds for network errors", () => {
     const error = apiError()
-    const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error))
+    const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error, 0))
     expect(delays).toStrictEqual([2000, 4000, 8000, 10000, 10000, 10000, 10000, 10000, 10000, 10000])
+  })
+
+  test("adds jitter before capping transient delays", () => {
+    const error = apiError()
+    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
+    expect(SessionRetry.delay(1, error, 1)).toBe(2500)
+    expect(SessionRetry.delay(4, error, 1)).toBe(10000)
+  })
+
+  test("preserves jittered exponential delays for rate limits", () => {
+    const error = apiError(undefined, 429)
+    expect(SessionRetry.delay(4, error, 1)).toBe(20000)
+    expect(SessionRetry.delay(5, error, 1)).toBe(30000)
   })
 
   test("caps retry-after at 10 seconds for 5xx errors", () => {
@@ -108,18 +121,18 @@ describe("session.retry.delay", () => {
 
   test("ignores invalid retry hints", () => {
     const error = apiError({ "retry-after": "not-a-number" })
-    expect(SessionRetry.delay(1, error)).toBe(2000)
+    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
   })
 
   test("ignores malformed date retry hints", () => {
     const error = apiError({ "retry-after": "Invalid Date String" })
-    expect(SessionRetry.delay(1, error)).toBe(2000)
+    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
   })
 
   test("ignores past date retry hints", () => {
     const pastDate = new Date(Date.now() - 5000).toUTCString()
     const error = apiError({ "retry-after": pastDate })
-    expect(SessionRetry.delay(1, error)).toBe(2000)
+    expect(SessionRetry.delay(1, error, 0)).toBe(2000)
   })
 
   test("uses retry-after values even when exceeding 10 minutes with headers", () => {
@@ -162,6 +175,29 @@ describe("session.retry.delay", () => {
         attempt: 2,
         message: "boom",
       })
+    }),
+  )
+
+  it.instance("policy stops after five retries", () =>
+    Effect.gen(function* () {
+      const attempts: number[] = []
+      const error = apiError({ "retry-after-ms": "0" })
+      const step = yield* Schedule.toStepWithMetadata(
+        SessionRetry.policy({
+          provider: "test",
+          parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+          set: (info) =>
+            Effect.sync(() => {
+              attempts.push(info.attempt)
+            }),
+        }),
+      )
+
+      yield* Effect.forEach(Array.from({ length: SessionRetry.RETRY_MAX_RETRIES + 1 }), () =>
+        Effect.ignore(step(error)),
+      )
+
+      expect(attempts).toStrictEqual([1, 2, 3, 4, 5])
     }),
   )
 })
