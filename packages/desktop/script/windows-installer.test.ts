@@ -69,7 +69,7 @@ ${section}
 SectionEnd
 `,
     )
-    const result = await run([compiler.path, script])
+    const result = await run([compiler.path, "-INPUTCHARSET", "UTF8", script])
     expect(result.code, `${result.stdout}\n${result.stderr}`).toBe(0)
 
     return exe
