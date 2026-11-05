@@ -1,33 +1,18 @@
-export function isMermaidLanguage(language: string | undefined) {
-  return language?.toLowerCase() === "mermaid"
-}
+let sequence = 0
 
-const mermaidStarts = [
-  "flowchart",
-  "graph",
-  "sequenceDiagram",
-  "classDiagram",
-  "stateDiagram",
-  "stateDiagram-v2",
-  "erDiagram",
-  "journey",
-  "gantt",
-  "pie",
-  "quadrantChart",
-  "requirementDiagram",
-  "gitGraph",
-  "mindmap",
-  "timeline",
-  "zenuml",
-  "sankey-beta",
-  "xychart-beta",
-  "block-beta",
-  "packet-beta",
-]
+export async function renderMermaidSvg(source: string) {
+  const pele = await import("pele/lazy")
 
-export function isMermaidBlock(language: string | undefined, source: string) {
-  if (isMermaidLanguage(language)) return true
-  if (language) return false
-  const first = source.trimStart().split(/\r?\n/, 1)[0]?.trim()
-  return !!first && mermaidStarts.some((start) => first === start || first.startsWith(`${start} `))
+  if (!pele.detectType(source)) return
+
+  const result = await pele.renderAsync(source, {
+    idPrefix: `markdown-mermaid-${sequence++}-`,
+    // Pele sizes boxes from measured label widths, so it must measure the font the CSS applies.
+    fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--font-family-sans"),
+    fontSize: 14,
+    images: false,
+    linkRel: "noopener noreferrer",
+  })
+
+  return result.svg
 }

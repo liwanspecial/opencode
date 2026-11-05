@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { canScrollKey, createScrollViewUserInteractions, scrollKey, scrollTopFromThumbPointer } from "./scroll-view"
+import { canScrollKey, scrollKey, scrollOffsetFromThumbPointer, scrollTopFromThumbPointer } from "./scroll-view"
 
 describe("scrollKey", () => {
   test("maps plain navigation keys", () => {
@@ -39,47 +39,6 @@ describe("canScrollKey", () => {
   })
 })
 
-describe("createScrollViewUserInteractions", () => {
-  test("reports owned keyboard, native pointer, and custom thumb scrolling", () => {
-    const viewport = {
-      contains: () => false,
-    } as unknown as HTMLDivElement
-    const interactions: string[] = []
-    const user = createScrollViewUserInteractions({
-      viewport: () => viewport,
-      onUserScroll: () => interactions.push("user"),
-    })
-    const keyEvent = (key: string) =>
-      ({
-        key,
-        altKey: false,
-        ctrlKey: false,
-        metaKey: false,
-        shiftKey: false,
-        target: null,
-      }) as KeyboardEvent
-
-    expect(user.keyDown(keyEvent("PageDown"))).toBe("page-down")
-    expect(user.keyDown(keyEvent("ArrowDown"))).toBe("down")
-    expect(user.keyDown(keyEvent(" "))).toBe("page-down")
-    user.pointerDown({ target: viewport })
-    user.thumbPointerDown()
-
-    expect(interactions).toEqual(["user", "user", "user", "user", "user"])
-  })
-
-  test("does not expose programmatic scroll as user interaction", () => {
-    const interactions: string[] = []
-    const user = createScrollViewUserInteractions({
-      viewport: () => ({ contains: () => false }) as unknown as HTMLDivElement,
-      onUserScroll: () => interactions.push("user"),
-    })
-
-    expect("scroll" in user).toBe(false)
-    expect(interactions).toEqual([])
-  })
-})
-
 describe("scrollTopFromThumbPointer", () => {
   test("keeps downward thumb movement monotonic when content height changes", () => {
     const first = scrollTopFromThumbPointer({
@@ -90,6 +49,7 @@ describe("scrollTopFromThumbPointer", () => {
       scrollHeight: 6_000,
       thumbHeight: 60,
     })
+
     const second = scrollTopFromThumbPointer({
       pointer: 320,
       viewportTop: 100,
@@ -110,6 +70,7 @@ describe("scrollTopFromThumbPointer", () => {
       scrollHeight: 6_000,
       thumbHeight: 60,
     }
+
     expect(scrollTopFromThumbPointer({ ...input, pointer: 0 })).toBe(0)
     expect(scrollTopFromThumbPointer({ ...input, pointer: 1_000 })).toBe(5_400)
   })
@@ -124,8 +85,30 @@ describe("scrollTopFromThumbPointer", () => {
       scrollHeight: 8_000,
       thumbHeight: 40,
     }
+
     // track usable = 400 - 16 - 40 = 344; thumbTop = 400 - 100 - 8 = 292
     // maxScroll = 8000 - 800 = 7200 → 292/344 * 7200
     expect(scrollTopFromThumbPointer(input)).toBeCloseTo((292 / 344) * 7200)
+  })
+})
+
+describe("scrollOffsetFromThumbPointer", () => {
+  const input = {
+    viewportStart: 100,
+    grabOffset: 10,
+    clientSize: 400,
+    scrollClientSize: 400,
+    scrollSize: 1_000,
+    thumbSize: 100,
+  }
+
+  test("maps horizontal pointer movement to scroll offset", () => {
+    expect(scrollOffsetFromThumbPointer({ ...input, pointer: 118 })).toBe(0)
+    expect(scrollOffsetFromThumbPointer({ ...input, pointer: 402 })).toBe(600)
+  })
+
+  test("reverses horizontal pointer movement for RTL", () => {
+    expect(scrollOffsetFromThumbPointer({ ...input, pointer: 118, reverse: true })).toBe(600)
+    expect(scrollOffsetFromThumbPointer({ ...input, pointer: 402, reverse: true })).toBe(0)
   })
 })

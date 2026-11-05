@@ -1,7 +1,6 @@
-import type { Projection } from "./markdown-stream"
+import type { Block } from "./markdown-stream"
 
 export type MarkdownToken = [content: string, style: string]
-export type MarkdownParseResult = { html: string; linkCapability: string }
 
 export type MarkdownWorkerRequest =
   | { type: "parse"; id: number; text: string }
@@ -10,8 +9,8 @@ export type MarkdownWorkerRequest =
   | { type: "dispose"; key: string }
 
 export type MarkdownWorkerResponse =
-  | ({ type: "parse"; id: number } & MarkdownParseResult)
-  | { type: "project"; id: number; key: string; projection: Projection }
+  | { type: "parse"; id: number; html: string }
+  | { type: "project"; id: number; key: string; from: number; blocks: Block[] }
   | {
       type: "highlight"
       id: number
@@ -36,6 +35,19 @@ export function shouldReleaseMarkdownWorkerState(complete: boolean, latestID: nu
   return complete && latestID === responseID
 }
 
+// A streamed answer keeps its settled blocks, so each projection response carries only the blocks from the first one
+// that changed since the previous response for its key. Resending them all copied the whole answer on every delta.
+export function diffProjectionBlocks(previous: Block[] | undefined, next: Block[]) {
+  const same = previous ? next.findIndex((block, index) => block !== previous[index]) : 0
+  const from = same === -1 ? next.length : same
+
+  return { from, blocks: next.slice(from) }
+}
+
+export function applyProjectionBlocks(previous: Block[] | undefined, from: number, blocks: Block[]) {
+  return [...(previous ?? []).slice(0, from), ...blocks]
+}
+
 export function markdownBlockKey(owner: string, cacheKey: string | undefined, index: number, mode: string) {
   return `${owner}:${cacheKey ? `${cacheKey}:${index}:${mode}` : `block:${index}`}`
 }
@@ -45,6 +57,7 @@ export function applyMarkdownWorkerResponse(
   response: Extract<MarkdownWorkerResponse, { type: "highlight" }>,
 ) {
   if (state && response.id <= state.id) return state
+
   return {
     id: response.id,
     generation: (state?.generation ?? 0) + (response.reset ? 1 : 0),
