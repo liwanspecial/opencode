@@ -9,6 +9,9 @@ type DesktopFileAPI = Pick<
   | "openFilePicker"
   | "readPickedFile"
   | "releasePickedFiles"
+  | "openBackgroundImagePicker"
+  | "readBackgroundImage"
+  | "clearBackgroundImage"
   | "getPathForFile"
   | "saveFile"
   | "openExternal"
@@ -72,6 +75,13 @@ export function createDesktopFiles(api: DesktopFileAPI, os: DesktopOS) {
     openDirectoryPickerDialog,
     openAttachmentPickerDialog,
     openFilePathPickerDialog,
+    openBackgroundImagePickerDialog: (options: { title?: string }) => api.openBackgroundImagePicker(options.title),
+    async getLocalFileUrl(path: string) {
+      const image = await api.readBackgroundImage(path)
+      if (!image) return
+      return URL.createObjectURL(new Blob([image.bytes], { type: image.mime }))
+    },
+    clearBackgroundImage: () => api.clearBackgroundImage(),
     getPathForFile: (file: File) => attachmentPaths.get(file) ?? api.getPathForFile(file),
     saveFile: (options: { title?: string; defaultPath?: string }, content: string) =>
       api.saveFile({ title: options.title, defaultPath: options.defaultPath }, content),

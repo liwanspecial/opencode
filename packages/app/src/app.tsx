@@ -8,15 +8,26 @@ import { ThemeProvider } from "@opencode/ui/theme/context"
 import { MetaProvider, Title } from "@solidjs/meta"
 import { type BaseRouterProps, Router } from "@solidjs/router"
 import { QueryClient, QueryClientProvider } from "@tanstack/solid-query"
-import { type Component, createRenderEffect, ErrorBoundary, type JSX, type ParentProps } from "solid-js"
+import {
+  type Component,
+  createEffect,
+  createRenderEffect,
+  createSignal,
+  ErrorBoundary,
+  type JSX,
+  onCleanup,
+  type ParentProps,
+  Show,
+} from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { CommandProvider } from "@/shell/commands/command"
 import { DesktopCommands } from "@/shell/commands/desktop"
 import { ProjectIconsProvider } from "@/shell/layout/project-icons"
 import { GlobalProvider } from "@/runtime/server/runtime"
 import { LanguageProvider, UiI18nBridge, type Locale } from "@/runtime/i18n/language"
+import { usePlatform } from "@/runtime/platform/platform"
 import { ServerConnection, ServersProvider } from "@/runtime/server/registry"
-import { SettingsProvider } from "@/settings/model"
+import { SettingsProvider, useSettings } from "@/settings/model"
 import { TabsProvider } from "@/shell/tabs/tabs"
 import { ErrorPage } from "@/shell/errors/error"
 import { AppRoutes, File, preloadRoute } from "@/shell/routes/routes"
@@ -46,6 +57,60 @@ function BodyTypography() {
   })
 
   return null
+}
+
+function AppBackground() {
+  const platform = usePlatform()
+  const settings = useSettings()
+  const [imageUrl, setImageUrl] = createSignal<string>()
+
+  createEffect(() => {
+    const path = settings.appearance.backgroundImage()
+    if (!settings.appearance.backgroundEnabled() || !path || !platform.getLocalFileUrl) return
+
+    let active = true
+    let url: string | undefined
+    onCleanup(() => {
+      active = false
+      if (url) URL.revokeObjectURL(url)
+      setImageUrl(undefined)
+    })
+
+    void platform
+      .getLocalFileUrl(path)
+      .then((result) => {
+        if (!result) return
+        if (!active) {
+          URL.revokeObjectURL(result)
+          return
+        }
+        url = result
+        setImageUrl(result)
+      })
+      .catch(() => undefined)
+  })
+
+  return (
+    <Show when={imageUrl()}>
+      {(url) => (
+        <div
+          aria-hidden="true"
+          class="fixed inset-0 z-[9999] pointer-events-none bg-center"
+          style={{
+            "background-image": `url("${url()}")`,
+            "background-size":
+              settings.appearance.backgroundFit() === "repeat" ? "auto" : settings.appearance.backgroundFit(),
+            "background-repeat": settings.appearance.backgroundFit() === "repeat" ? "repeat" : "no-repeat",
+            opacity: settings.appearance.backgroundOpacity(),
+            filter: settings.appearance.backgroundBlur()
+              ? `blur(${settings.appearance.backgroundBlur()}px)`
+              : undefined,
+            transform: settings.appearance.backgroundBlur() ? "scale(1.02)" : undefined,
+          }}
+        />
+      )}
+    </Show>
+  )
 }
 
 export function AppBaseProviders(
@@ -114,6 +179,7 @@ export function AppInterface(props: {
   return (
     <ServersProvider canonicalLocalServer={props.canonicalLocalServer} servers={props.servers}>
       <SettingsProvider>
+        <AppBackground />
         <Dynamic component={props.router ?? Router} root={Root}>
           <AppRoutes />
         </Dynamic>

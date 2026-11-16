@@ -62,6 +62,12 @@ export const api: ElectronAPI = {
   openFilePicker: (opts) => invoke("FilesOpenFilePicker", { options: opts }).then(mutable),
   readPickedFile: (token, path) => invoke("FilesReadPickedFile", { token, path }).then(toArrayBuffer),
   releasePickedFiles: (token) => invoke("FilesReleasePickedFiles", { token }),
+  openBackgroundImagePicker: (title) => invoke("FilesOpenBackgroundImagePicker", { title }),
+  readBackgroundImage: (path) =>
+    invoke("FilesReadBackgroundImage", { path }).then((image) =>
+      image ? { mime: image.mime, bytes: toArrayBuffer(image.bytes) } : null,
+    ),
+  clearBackgroundImage: () => invoke("FilesClearBackgroundImage"),
   getPathForFile: (file) => window.electron.getPathForFile(file),
   saveFile: (opts, content) => invoke("FilesSaveFile", { options: opts, content }),
   openExternal: (url) => send("FilesOpenExternal", { url }),

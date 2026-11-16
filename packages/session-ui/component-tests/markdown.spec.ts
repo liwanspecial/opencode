@@ -47,6 +47,53 @@ story("keeps Markdown text selectable inside a container that disables selection
   expect(await page.evaluate(() => getSelection()?.toString().trim())).toBe("Selectable answer text")
 })
 
+story("opens a context menu for Markdown links and file paths", async ({ page }) => {
+  await page.evaluate(async (fixture) => {
+    const { mountMarkdown } = await import(fixture)
+    await mountMarkdown({
+      text: "[External](https://example.test/docs?q=a%20b)\n\n[File reference](src/file.ts:12)\n\n`new/file.ts`\n\nPlain text",
+      synchronousFiles: true,
+      contextMenu: true,
+    })
+  }, fixture)
+
+  const markdown = page.getByTestId("markdown-fixture")
+  const action = markdown.getByLabel("Markdown action")
+  const fileLink = markdown.getByRole("link", { name: "File reference" })
+  const externalLink = markdown.getByRole("link", { name: "External" })
+
+  await externalLink.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Copy link" }).click()
+  await expect(action).toHaveText("copy:https://example.test/docs?q=a%20b")
+
+  await externalLink.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Open link" }).click()
+  await expect(action).toHaveText("external:https://example.test/docs?q=a%20b")
+
+  await fileLink.press("Shift+F10")
+  await page.getByRole("menuitem", { name: "Show in folder" }).click()
+  await expect(action).toHaveText("reveal:src/file.ts")
+
+  await fileLink.click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Open", exact: true }).click()
+  await expect(action).toHaveText("open:src/file.ts")
+
+  await fileLink.click()
+  await expect(action).toHaveText("navigate:src/file.ts#L12")
+
+  await markdown.getByText("new/file.ts", { exact: true }).click({ button: "right" })
+  await page.getByRole("menuitem", { name: "Copy path" }).click()
+  await expect(action).toHaveText("copy:new/file.ts")
+
+  const ordinaryMenuAllowed = await markdown
+    .getByText("Plain text", { exact: true })
+    .evaluate((node) =>
+      node.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 })),
+    )
+  expect(ordinaryMenuAllowed).toBe(true)
+  await expect(page.getByRole("menuitem", { name: "Copy path" })).toHaveCount(0)
+})
+
 story("sanitizes raw HTML while preserving supported Markdown markup", async ({ page }) => {
   const result = await page.evaluate(async (fixture) => {
     const { sanitizeMarkdown } = await import(fixture)

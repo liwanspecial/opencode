@@ -42,6 +42,9 @@ export type ElectronAPI = {
   openFilePicker(opts?: FilePickerOptions): Promise<PickedFiles | null>
   readPickedFile(token: string, path: string): Promise<ArrayBuffer>
   releasePickedFiles(token: string): Promise<void>
+  openBackgroundImagePicker(title?: string): Promise<string | null>
+  readBackgroundImage(path: string): Promise<{ mime: string; bytes: ArrayBuffer } | null>
+  clearBackgroundImage(): Promise<void>
   getPathForFile(file: File): string
   saveFile(opts: SaveFilePickerOptions, content: string): Promise<boolean>
   openExternal(url: string): void

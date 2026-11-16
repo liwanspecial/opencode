@@ -37,6 +37,39 @@ describe("settings timeline detail migration", () => {
 })
 
 describe("settings schema", () => {
+  test("restores and round-trips a background saved by the previous desktop version", () => {
+    const background = {
+      backgroundEnabled: true,
+      backgroundImage: "C:\\Pictures\\夜景 #1.png",
+      backgroundOpacity: 0.42,
+      backgroundBlur: 8,
+      backgroundFit: "repeat",
+    }
+    const settings = decode({ appearance: background })
+
+    expect(settings.appearance).toMatchObject(background)
+    expect(decode(encode(settings)).appearance).toMatchObject(background)
+  })
+
+  test("defaults invalid background options without dropping a saved image", () => {
+    const settings = decode({
+      appearance: {
+        backgroundImage: "C:\\Pictures\\night.png",
+        backgroundOpacity: 2,
+        backgroundBlur: -1,
+        backgroundFit: "invalid",
+      },
+    })
+
+    expect(settings.appearance).toMatchObject({
+      backgroundEnabled: false,
+      backgroundImage: "C:\\Pictures\\night.png",
+      backgroundOpacity: 0.25,
+      backgroundBlur: 0,
+      backgroundFit: "cover",
+    })
+  })
+
   test("keeps the values plugins copy out once and discards retired preferences", () => {
     const settings = decode({
       general: {
@@ -109,6 +142,11 @@ describe("settings schema", () => {
         terminal: "",
         tabLayout: "horizontal",
         reduceMotion: "system",
+        backgroundEnabled: false,
+        backgroundImage: "",
+        backgroundOpacity: 0.25,
+        backgroundBlur: 0,
+        backgroundFit: "cover",
       },
       keybinds: {},
       permissions: { autoApprove: false, autoApproveProjects: {} },
@@ -160,6 +198,7 @@ describe("settings schema", () => {
       sidebarOrganize: "list",
     })
     expect(settings.appearance).toEqual({
+      ...defaultSettings.appearance,
       fontSize: 14,
       mono: "Custom Mono",
       sans: "",

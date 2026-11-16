@@ -1,5 +1,5 @@
 import { produce, reconcile, unwrap } from "solid-js/store"
-import { createEffect, createMemo } from "solid-js"
+import { batch, createEffect, createMemo, createSignal } from "solid-js"
 import { createMediaQuery } from "@solid-primitives/media"
 import { Effect, Option, Predicate, Schema, SchemaGetter } from "effect"
 import { createSimpleContext } from "@opencode/ui/context"
@@ -24,6 +24,8 @@ export type TimelineWidth = Settings["general"]["timelineWidth"]
 export type TabLayout = Settings["appearance"]["tabLayout"]
 
 export type ReduceMotion = Settings["appearance"]["reduceMotion"]
+
+export type BackgroundFit = Settings["appearance"]["backgroundFit"]
 
 export type NotificationSettings = Settings["notifications"]
 
@@ -149,6 +151,11 @@ const appearanceSchema = Persistence.struct({
   tabLayout: Schema.Literals(["horizontal", "vertical", "inbox"]),
   sidebarOpen: Persistence.optional(Schema.Boolean),
   reduceMotion: Schema.Literals(["system", "on", "off"]),
+  backgroundEnabled: Schema.Boolean,
+  backgroundImage: Schema.String,
+  backgroundOpacity: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })),
+  backgroundBlur: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 24 })),
+  backgroundFit: Schema.Literals(["cover", "contain", "repeat"]),
 })
 
 const permissionsSchema = Persistence.struct({
@@ -311,7 +318,19 @@ export const defaultSettings: Settings = {
     mobileTitlebarPosition: "top",
     followUpBehavior: "steer",
   },
-  appearance: { fontSize: 14, mono: "", sans: "", terminal: "", tabLayout: "horizontal", reduceMotion: "system" },
+  appearance: {
+    fontSize: 14,
+    mono: "",
+    sans: "",
+    terminal: "",
+    tabLayout: "horizontal",
+    reduceMotion: "system",
+    backgroundEnabled: false,
+    backgroundImage: "",
+    backgroundOpacity: 0.25,
+    backgroundBlur: 0,
+    backgroundFit: "cover",
+  },
   keybinds: {},
   permissions: { autoApprove: false, autoApproveProjects: {} },
   workspaces: { defaultDestination: "last-used", lastUsed: {} },
@@ -338,6 +357,7 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
   gate: false,
   init: () => {
     const [store, setStore, , ready] = persisted({ key: "settings.v3" }, settingsPersistence, defaultSettings)
+    const [backgroundSelection, setBackgroundSelection] = createSignal(0)
 
     const showCustomAgents = withFallback(
       () => store.general?.showCustomAgents,
@@ -473,6 +493,42 @@ export const { use: useSettings, provider: SettingsProvider } = createSimpleCont
         reduceMotion,
         setReduceMotion(value: ReduceMotion) {
           setStore("appearance", "reduceMotion", value)
+        },
+        backgroundEnabled: withFallback(
+          () => store.appearance?.backgroundEnabled,
+          defaultSettings.appearance.backgroundEnabled,
+        ),
+        setBackgroundEnabled(value: boolean) {
+          setStore("appearance", "backgroundEnabled", value)
+        },
+        backgroundImage() {
+          // Re-selecting a legacy path can grant a new native permission without changing the saved path.
+          backgroundSelection()
+          return store.appearance?.backgroundImage ?? defaultSettings.appearance.backgroundImage
+        },
+        setBackgroundImage(value: string) {
+          batch(() => {
+            setStore("appearance", { backgroundImage: value, backgroundEnabled: Boolean(value) })
+            setBackgroundSelection((current) => current + 1)
+          })
+        },
+        backgroundOpacity: withFallback(
+          () => store.appearance?.backgroundOpacity,
+          defaultSettings.appearance.backgroundOpacity,
+        ),
+        setBackgroundOpacity(value: number) {
+          setStore("appearance", "backgroundOpacity", Math.min(1, Math.max(0, value)))
+        },
+        backgroundBlur: withFallback(() => store.appearance?.backgroundBlur, defaultSettings.appearance.backgroundBlur),
+        setBackgroundBlur(value: number) {
+          setStore("appearance", "backgroundBlur", Math.min(24, Math.max(0, value)))
+        },
+        backgroundFit: withFallback(() => store.appearance?.backgroundFit, defaultSettings.appearance.backgroundFit),
+        setBackgroundFit(value: BackgroundFit) {
+          setStore("appearance", "backgroundFit", value)
+        },
+        clearBackground() {
+          setStore("appearance", { backgroundImage: "", backgroundEnabled: false })
         },
       },
       keybinds: {

@@ -69,6 +69,15 @@ type PlatformBase = {
   /** Open a native file picker and return the selected paths without reading the files (desktop only) */
   openFilePathPickerDialog?(opts: OpenFilePathPickerOptions): Promise<string[] | null>
 
+  /** Select and authorize a local image for the desktop background. */
+  openBackgroundImagePickerDialog?(opts: { title?: string }): Promise<string | null>
+
+  /** Read the authorized background image. The caller owns the returned object URL. */
+  getLocalFileUrl?(path: string): Promise<string | undefined>
+
+  /** Revoke permission to read the selected background image. */
+  clearBackgroundImage?(): Promise<void>
+
   /** Resolve the native source path for a desktop File. */
   getPathForFile?(file: File): string
 

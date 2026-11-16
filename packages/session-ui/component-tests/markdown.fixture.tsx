@@ -31,6 +31,7 @@ export async function mountMarkdown(options: {
   images?: boolean
   synchronousFiles?: boolean
   localFileExists?: MarkdownLocalFileExists
+  contextMenu?: boolean
 }) {
   if (options.cached) await preloadMarkdown(options.text, "markdown-test")
   const host = document.createElement("div")
@@ -46,6 +47,7 @@ export async function mountMarkdown(options: {
     const [streaming, setStreaming] = createSignal(options.streaming ?? false)
     const [visible, setVisible] = createSignal(true)
     const [german, setGerman] = createSignal(false)
+    const [action, setAction] = createSignal("")
     const english = useI18n()
 
     return (
@@ -64,6 +66,9 @@ export async function mountMarkdown(options: {
           onChange={(event) => setGerman(event.currentTarget.checked)}
         />
         <button onClick={() => setVisible((value) => !value)}>Toggle Markdown</button>
+        <Show when={options.contextMenu}>
+          <output aria-label="Markdown action">{action()}</output>
+        </Show>
         <I18nProvider
           value={{
             locale: () => (german() ? "de" : "en"),
@@ -79,6 +84,31 @@ export async function mountMarkdown(options: {
             localFileExists={(path) =>
               options.localFileExists?.(path) ??
               (options.synchronousFiles ? existingFiles.has(path) : Promise.resolve(existingFiles.has(path)))
+            }
+            openLocalFile={
+              options.contextMenu
+                ? (value) => {
+                    setAction(`navigate:${value}`)
+                  }
+                : undefined
+            }
+            contextMenu={
+              options.contextMenu
+                ? {
+                    copy: (value) => {
+                      setAction(`copy:${value}`)
+                    },
+                    openExternal: (value) => {
+                      setAction(`external:${value}`)
+                    },
+                    openPath: (value) => {
+                      setAction(`open:${value}`)
+                    },
+                    revealPath: (value) => {
+                      setAction(`reveal:${value}`)
+                    },
+                  }
+                : undefined
             }
           >
             <Show when={visible()}>

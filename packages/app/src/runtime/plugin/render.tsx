@@ -20,6 +20,7 @@ import {
   type MarkdownCodeAction,
   type MarkdownCodeBlock,
   type MarkdownCodeBlocks,
+  type MarkdownContextMenuHandlers,
 } from "@opencode/session-ui/context/markdown"
 import { SourcesProvider } from "@opencode/session-ui/context/sources"
 import { sourcesExperiment } from "@opencode/session-ui/sources/experiment"
@@ -35,8 +36,10 @@ import {
 } from "@opencode/plugin/gui"
 import { BuiltinSlot, type BuiltinSlotMap } from "@opencode/plugin/gui/builtin"
 import { PluginContext } from "@opencode/plugin/gui/host"
+import { usePlatform } from "@/runtime/platform/platform"
 import { usePluginHost, type Item } from "./host"
 import { createLinkCheck } from "./link-check"
+import { resolveMarkdownDesktopPath } from "./markdown-desktop-path"
 
 /**
  * Renders one plugin contribution with its context and error isolation: a contribution that throws records the
@@ -154,6 +157,38 @@ export function PluginThemes(props: { loaded: () => boolean }) {
 export function PluginLinks(props: ParentProps<{ session: MountedSession; active?: boolean }>) {
   const host = usePluginHost()
   const markdown = useMarkdown()
+  const platform = usePlatform()
+
+  const contextMenu = createMemo<MarkdownContextMenuHandlers>(() => {
+    const session = props.session
+    const directory = session.location?.directory
+    const native = platform.platform === "desktop" && props.active !== false && session.server.local && !!directory
+
+    const resolve = (path: string) => {
+      if (props.active === false || props.session !== session || session.location?.directory !== directory) return
+
+      return resolveMarkdownDesktopPath({ local: session.server.local, os: platform.os, directory, path })
+    }
+
+    return {
+      copy: (value) => platform.writeClipboardText?.(value) ?? navigator.clipboard?.writeText(value),
+      openExternal: (url) => platform.openExternal(url),
+      openPath:
+        native && platform.openPath
+          ? (path) => {
+              const target = resolve(path)
+              if (target) return platform.openPath?.(target)
+            }
+          : undefined,
+      revealPath:
+        native && platform.revealPath
+          ? (path) => {
+              const target = resolve(path)
+              if (target) return platform.revealPath?.(target)
+            }
+          : undefined,
+    }
+  })
 
   // Checks untracked: markdown calls this inside its render effect, which must not follow the routed session.
   const localFileExists = createLinkCheck(
@@ -166,6 +201,7 @@ export function PluginLinks(props: ParentProps<{ session: MountedSession; active
       readImage={markdown?.readImage}
       openLocalFile={(href) => void host.links.open({ href, session: props.session })}
       localFileExists={localFileExists}
+      contextMenu={contextMenu()}
       codeBlocks={inner.codeBlocks}
     >
       {inner.children}

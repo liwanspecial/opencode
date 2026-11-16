@@ -12,6 +12,8 @@ export const SPELLCHECK_LANGUAGES_KEY = "spellcheckLanguages"
 
 export const BACKGROUND_COLOR_KEY = "backgroundColor"
 
+export const BACKGROUND_IMAGE_GRANT_KEY = "backgroundImageGrant"
+
 export const WINDOW_IDS_KEY = "windowIds"
 
 export const BUNDLED_CLI_VERSION_KEY = "bundledCliVersion"

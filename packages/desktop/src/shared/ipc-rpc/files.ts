@@ -45,6 +45,23 @@ export const FilesReleasePickedFiles = Rpc.make("FilesReleasePickedFiles", {
   payload: { token: Schema.String },
 })
 
+export const FilesOpenBackgroundImagePicker = Rpc.make("FilesOpenBackgroundImagePicker", {
+  payload: { title: OptionalString },
+  success: Schema.NullOr(Schema.String),
+})
+
+export const FilesReadBackgroundImage = Rpc.make("FilesReadBackgroundImage", {
+  payload: { path: Schema.String },
+  success: Schema.NullOr(
+    Schema.Struct({
+      mime: Schema.Literals(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+      bytes: Transferable.Uint8Array,
+    }),
+  ),
+})
+
+export const FilesClearBackgroundImage = Rpc.make("FilesClearBackgroundImage")
+
 export const FilesSaveFile = Rpc.make("FilesSaveFile", {
   payload: { options: SavePickerOptions, content: Schema.String },
   success: Schema.Boolean,
@@ -86,6 +103,9 @@ export const FileRpcs = RpcGroup.make(
   FilesOpenFilePicker,
   FilesReadPickedFile,
   FilesReleasePickedFiles,
+  FilesOpenBackgroundImagePicker,
+  FilesReadBackgroundImage,
+  FilesClearBackgroundImage,
   FilesSaveFile,
   FilesOpenExternal,
   FilesOpenBrowser,

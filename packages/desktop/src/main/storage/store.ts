@@ -36,10 +36,11 @@ export function getStore(name = SETTINGS_STORE) {
 export function createSettingsStore(file: string) {
   let data = read(file)
 
-  const write = () => {
+  const write = (next: typeof SettingsFile.Type) => {
     mkdirSync(path.dirname(file), { recursive: true })
-    writeFileSync(`${file}.tmp`, JSON.stringify(data, null, "\t"))
+    writeFileSync(`${file}.tmp`, JSON.stringify(next, null, "\t"))
     renameSync(`${file}.tmp`, file)
+    data = next
   }
 
   return {
@@ -47,12 +48,10 @@ export function createSettingsStore(file: string) {
     get: (key: string): Schema.Json | undefined => data[key],
     set: (key: string, value: Schema.Json) => {
       if (value === undefined) throw new TypeError(`Use \`delete()\` to clear values: ${key}`)
-      data = { ...data, [key]: value }
-      write()
+      write({ ...data, [key]: value })
     },
     delete: (key: string) => {
-      data = Object.fromEntries(Object.entries(data).filter(([item]) => item !== key))
-      write()
+      write(Object.fromEntries(Object.entries(data).filter(([item]) => item !== key)))
     },
   }
 }

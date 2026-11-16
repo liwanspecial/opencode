@@ -325,6 +325,12 @@ const source = {
   "ui.message.queued": "Queued",
   "ui.message.attachment.alt": "attachment",
 
+  "ui.markdown.contextMenu.copyLink": "Copy link",
+  "ui.markdown.contextMenu.copyPath": "Copy path",
+  "ui.markdown.contextMenu.openLink": "Open link",
+  "ui.markdown.contextMenu.openPath": "Open",
+  "ui.markdown.contextMenu.revealPath": "Show in folder",
+
   "ui.patch.action.deleted": "Deleted",
   "ui.patch.action.created": "Created",
   "ui.patch.action.moved": "Moved",

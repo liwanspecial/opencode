@@ -12,6 +12,13 @@ export type OpenMarkdownLocalFile = (path: string) => void
  */
 export type MarkdownLocalFileExists = (path: string) => boolean | Promise<boolean>
 
+export type MarkdownContextMenuHandlers = {
+  copy(value: string): void | Promise<unknown>
+  openExternal?(url: string): void | Promise<unknown>
+  openPath?(path: string): void | Promise<unknown>
+  revealPath?(path: string): void | Promise<unknown>
+}
+
 /** A complete fenced code block, as `MarkdownCodeBlocks` receives it. */
 export type MarkdownCodeBlock = {
   /** The source between the fences, without the final line break. */
@@ -58,6 +65,7 @@ const context = createContext<{
   readonly readImage?: ReadMarkdownImage
   readonly openLocalFile?: OpenMarkdownLocalFile
   readonly localFileExists?: MarkdownLocalFileExists
+  readonly contextMenu?: MarkdownContextMenuHandlers
   readonly openSession?: (sessionID: string) => void
   readonly sessionTitle?: (sessionID: string) => string | undefined
   readonly codeBlocks?: MarkdownCodeBlocks
@@ -68,6 +76,7 @@ export function MarkdownProvider(
     readImage?: ReadMarkdownImage
     openLocalFile?: OpenMarkdownLocalFile
     localFileExists?: MarkdownLocalFileExists
+    contextMenu?: MarkdownContextMenuHandlers
     openSession?: (id: string) => void
     sessionTitle?: (id: string) => string | undefined
     /** Content for code blocks; inherited when omitted. `false` turns it off below, e.g. inside such content. */
@@ -87,6 +96,9 @@ export function MarkdownProvider(
         },
         get localFileExists() {
           return props.localFileExists ?? parent?.localFileExists
+        },
+        get contextMenu() {
+          return props.contextMenu ?? parent?.contextMenu
         },
         get openSession() {
           return props.openSession ?? parent?.openSession

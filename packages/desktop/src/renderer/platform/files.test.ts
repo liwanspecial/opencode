@@ -19,6 +19,9 @@ function fileApi(events: string[]): Parameters<typeof createDesktopFiles>[0] {
     releasePickedFiles: async (token: string) => {
       events.push(`release:${token}`)
     },
+    openBackgroundImagePicker: async () => null,
+    readBackgroundImage: async () => null,
+    clearBackgroundImage: async () => {},
     getPathForFile: () => "fallback",
     saveFile: async () => false,
     openExternal: () => {},

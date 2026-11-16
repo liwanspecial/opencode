@@ -6,7 +6,9 @@ import { Context, Effect, FileSystem, Layer, Path } from "effect"
 import type { DirectoryPickerOptions, FilePickerOptions, SaveFilePickerOptions } from "../../shared/ipc-contract"
 import { scoped } from "../native/logging"
 import { nativeT } from "../native/translations"
+import { getStore } from "../storage/store"
 import { assertAttachmentBudget, createPickedFileAuthorizations, readAttachment } from "./attachment-picker"
+import { backgroundImageExtensions, createBackgroundImages } from "./background-image"
 import { resolveExternalURL, resolveLocalFilePath } from "./external-url"
 
 export type Interface = ReturnType<typeof make>
@@ -27,6 +29,7 @@ function make(fs: FileSystem.FileSystem, path: Path.Path) {
   const pickedFiles = createPickedFileAuthorizations((file, maxBytes) =>
     readAttachment(file, maxBytes).pipe(Effect.provideService(FileSystem.FileSystem, fs)),
   )
+  const background = createBackgroundImages(fs, getStore())
 
   return {
     openDirectoryPicker: Effect.fn("DesktopFiles.openDirectoryPicker")(function* (options?: DirectoryPickerOptions) {
@@ -70,6 +73,19 @@ function make(fs: FileSystem.FileSystem, path: Path.Path) {
     }),
     readPickedFile: pickedFiles.read,
     releasePickedFiles: pickedFiles.release,
+    openBackgroundImagePicker: Effect.fn("DesktopFiles.openBackgroundImagePicker")(function* (title?: string) {
+      const result = yield* Effect.promise(() =>
+        dialog.showOpenDialog({
+          properties: ["openFile"],
+          title: title ?? nativeT("desktop.dialog.chooseFile"),
+          filters: pickerFilters(backgroundImageExtensions),
+        }),
+      )
+      if (result.canceled) return null
+      return yield* background.select(result.filePaths[0] ?? "")
+    }),
+    readBackgroundImage: background.read,
+    clearBackgroundImage: background.clear,
     saveFile: Effect.fn("DesktopFiles.saveFile")(function* (options: SaveFilePickerOptions, content: string) {
       const result = yield* Effect.promise(() =>
         dialog.showSaveDialog({

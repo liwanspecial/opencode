@@ -10,6 +10,7 @@ import {
   For,
   onCleanup,
   type Setter,
+  Show,
   splitProps,
 } from "solid-js"
 import { isServer, render } from "solid-js/web"
@@ -60,6 +61,7 @@ import { createImagePreview } from "./image-preview"
 import { setupFragmentLinks } from "./markdown-fragment-links"
 import { markSessionLinks, setupSessionLinks } from "./markdown-session-links"
 import { markdownClipboardHtml } from "./markdown-clipboard"
+import { MarkdownContextMenu } from "./markdown-context-menu"
 import { createCopyFeedback } from "./copy"
 
 type RenderedBlock =
@@ -1067,18 +1069,23 @@ export function Markdown(
   })
 
   return (
-    <div
-      data-component="markdown"
-      data-streaming={local.streaming ? "" : undefined}
-      dir="auto"
-      classList={{
-        ...local.classList,
-        [local.class ?? ""]: !!local.class,
-      }}
-      ref={setRoot}
-      onCopy={copySelection}
-      {...others}
-    />
+    <>
+      <div
+        data-component="markdown"
+        data-streaming={local.streaming ? "" : undefined}
+        dir="auto"
+        classList={{
+          ...local.classList,
+          [local.class ?? ""]: !!local.class,
+        }}
+        ref={setRoot}
+        onCopy={copySelection}
+        {...others}
+      />
+      <Show when={markdown?.contextMenu}>
+        {(actions) => <MarkdownContextMenu root={root()} actions={actions()} />}
+      </Show>
+    </>
   )
 }
 
